@@ -928,8 +928,10 @@ function userInitiatedAudioStart()
 			synth.onmidimessage(makeMidiEventFromMessage([0x80 + ch,noteNumber & 0x7F,0],"internal","drums","1"));
 		};
 	})
-	dg("tsdrums").style.maxHeight = "80px";
-	dg("tsdrums2").style.maxHeight = "80px";
+	dg("tsdrums").style.maxHeight = "110px";
+	dg("tsdrums2").style.maxHeight = "110px";
+	dg("tsdrums").style.height = "110px";
+	dg("tsdrums2").style.height = "110px";
 	dg("Panel:Main").style.display = "";
 	dg("Panel:Start").style.display = "none";
 	refreshTrackDisplay();
@@ -1248,11 +1250,13 @@ function refreshTrackDisplay()
 var loopedRecording = [];
 var currentRecording = [];
 var currentPlaybackControl = null;
+var currentRecordingLength = 0;		// set to 0 when recording is empty, otherwise we only record to integer multiples of the first part (typically drums)
 
 var onNextNoteDown = null;	// next time a note gets pushed down, this function gets called with (message,fe) where fe is the friendly english version of the midi message
 
 function mainRecordButton()
 {
+	onNextNoteDown = function(){};
 	if (currentPlaybackControl) {
 		currentPlaybackControl.stop();
 	}
@@ -1260,12 +1264,14 @@ function mainRecordButton()
 		if (!confirm("Replace existing recording?")) return;
 		currentRecording = [];
 	}
+	currentRecordingLength = 0;
 	loopedRecording = [];
 	synth.record(currentRecording);
 }
 
 function mainPlayButton()
 {
+	onNextNoteDown = function(){};
 	if (currentPlaybackControl && currentPlaybackControl.finished) currentPlaybackControl = null;
 	if (!currentPlaybackControl) {
 		currentPlaybackControl = synth.playback(currentRecording);
@@ -1278,21 +1284,38 @@ function mainStopButton()
 {
 	if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
 	if (currentPlaybackControl) { currentPlaybackControl.stop(); currentPlaybackControl = null; }
+	onNextNoteDown = function(){};
 }
 
 function mainLoopButton()
 {
-	if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
+	if (synth.recordings.includes(currentRecording)) {
+		synth.stopRecord(currentRecording);
+		if (currentRecordingLength==0) {	// recording first track: this sets the length for the rest
+			synth.setStartTimeToFirstNote(currentRecording);
+			currentRecordingLength = synth.recordingLength(currentRecording);
+		}
+	}
 	else return;
 	if (currentPlaybackControl) { currentPlaybackControl.stop(); currentPlaybackControl = null; }
 	loopedRecording = JSON.parse(JSON.stringify(currentRecording));
 	currentPlaybackControl = synth.playback(loopedRecording);
 	currentPlaybackControl.loop = true;
 	currentTrack++; if (currentTrack > 15) currentTrack = 1;
+	kbdTrack = currentTrack;
 	dg("trRecord"+currentTrack).checked = true;
+	var fixedLengthToUse = currentRecordingLength;
+	currentRecording = [];	// we start recording right away as we are looping the playback
+	synth.record(currentRecording, fixedLengthToUse);
+	currentPlaybackControl.onEnd = function() {
+		// then every time we loop around, we clear and restart the recording so it will start on an even downbeat
+		if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
+		currentRecording = [];
+		synth.record(currentRecording, fixedLengthToUse);
+	};
 	onNextNoteDown = function() {
-		currentRecording = [];	// we don't record right away, we record starting the next time a note goes down
-		synth.record(currentRecording);
+		// and when the user plays a note, we turn off the special onEnd part
+		currentPlaybackControl.onEnd = function(){};
 	};
 }
 

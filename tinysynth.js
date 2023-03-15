@@ -6,6 +6,8 @@
 //	The soundfont files used are still based on FluidR3_GM.sf2, but instead of being base64-encoded MP3 files for each note
 //	in JavaScript files, they will be a smaller, more efficient binary format for each instrument.
 //
+//     Then I (Dave White) added a bunch of other things, such as recording, drum sounds, etc.
+//
 
 "use strict";
 
@@ -1872,9 +1874,10 @@ function WebAudioTinySynth(opt){
       //this._send([0x90,60,0]);
     },
     //------ DW: Recording and Playback Module!
-    record: function(destArray) {
+    record: function(destArray, fixedLength) {
 		// turn on recording to a given array reference (send a variable set to [] to start a new recording, or send an existing array to append)
-		destArray.push({"type": "timestarted", "t": this.currentTime()}); // record when the recording started
+		// fixedLength is optional, and if it is there, it will record all the times modulo that length, for looping purposes
+		destArray.push({"type": "timestarted", "t": this.currentTime(), "fixedLength": fixedLength}); // record when the recording started
 		var pgmt = this.currentTime();
 		for (var i = 0; i < 16; i++) {	// all recordings include set-program (instrument) for all channels, and then when you stop recording, it removes the ones that weren't used.
 			if (i==9) continue;
@@ -1885,6 +1888,25 @@ function WebAudioTinySynth(opt){
 		}
 		this.recordings.push(destArray);
     },
+	roundToMultipleOfFixedLength(destArray) {
+		// adjust to match an integral multiple of the fixed length if one was provided
+		try {
+			if (destArray && destArray.length>0 && destArray[0].type=='timestarted' && destArray[0].fixedLength) {
+				var fixedLength = destArray[0].fixedLength;
+				var currentLength = this.recordingLength(destArray);
+				var factor = currentLength / fixedLength;
+				var floorError = Math.abs(factor - Math.floor(factor));
+				var ceilError = Math.abs(factor - Math.ceil(factor));
+				if (floorError < ceilError) factor = Math.floor(factor); else factor = Math.ceil(factor);  // choose the rounding direction that produces the least error
+				if (factor<1) factor = 1;
+				var newLength = fixedLength * factor;
+				for (var i = 0; i < destArray.length; i++) {
+					if (destArray[i].t > destArray[0].t + newLength) destArray[i].t = destArray[0].t + newLength;
+					if (destArray[i].type=='timestopped') { destArray[i].t = destArray[0].t + newLength; }
+				}
+			}
+		} catch (ftex1) { }
+	},
     stopRecord: function(destArray) {
 		// stop recording to a given array reference
 		destArray.push({"type": "timestopped", "t": this.currentTime()});  // record when the recording ended
@@ -1895,6 +1917,8 @@ function WebAudioTinySynth(opt){
 				if (!channelsUsed.includes(destArray[i].initsetch)) { destArray.splice(i,1); i--; }
 			}
 		}
+		// adjust to match an integral multiple of the fixed length if one was provided
+		this.roundToMultipleOfFixedLength(destArray);
 		// sort the recording by time, that's the best way for it to be
 		this.sortRecordingByTime(destArray);
 		// now remove the array from the recording group so no more events are recorded to it
@@ -1971,12 +1995,43 @@ function WebAudioTinySynth(opt){
 		}
 		return maxT;
 	},
+	recordingLength: function(r) {
+		// length of a completed recording
+		var startTime = null;
+		var endTime = null;
+		for (var i = 0; i < r.length; i++) {
+			if (r[i].type=='timestarted') startTime = r[i].t;
+			if (r[i].type=='timestopped') endTime = r[i].t;
+		}
+		if (endTime===null) endTime = this.maxTime(r);
+		return endTime - startTime;
+	},
+	recordingStartTime: function(r) {
+		// start time of a recording
+		for (var i = 0; i < r.length; i++) {
+			if (r[i].type=='timestarted') return r[i].t;
+		}
+		return firstNoteTime(r);
+	},
+	setStartTimeToFirstNote: function(r) {
+		var fnt = this.firstNoteTime(r);
+		for (var i = 0; i < r.length; i++) {
+			if (r[i].t<fnt) r[i].t = fnt;
+		}
+	},
+	recordingEndTime: function(r) {
+		// end time of a recording
+		for (var i = 0; i < r.length; i++) {
+			if (r[i].type=='timestopped') return r[i].t;
+		}
+		return this.maxTime(r);
+	},
 	normalizeRecordingTimes(r,tbase) {
-		// creates a cloned copy of r where the time of the first note starts at tbase
+		// creates a cloned copy of r where the start time starts at tbase
 		// if there is no tbase, it starts at zero
 		if (!tbase) tbase = 0;
 		var r2 = JSON.parse(JSON.stringify(r));
-		var timeOffset = this.firstNoteTime(r2);
+		var timeOffset = this.recordingStartTime(r2);
 		if (isNaN(timeOffset)) {  // no notes?  start at the time of the first entry in the recording
 			if (r2.length>0) timeOffset = r2[0].t;
 			else timeOffset = 0;
@@ -2101,7 +2156,7 @@ function WebAudioTinySynth(opt){
 			startIndex = onlyAfter;
 			if (startIndex < 0) startIndex = 0;
 			if (startIndex >= r.length) startIndex = 0;
-			baseTime -= (r[startIndex].t - this.firstNoteTime(r));
+			baseTime -= (r[startIndex].t - this.recordingStartTime(r));
 		}
 		var nr = this.normalizeRecordingTimes(sourceR,baseTime);
 		var sendControl = this.sendRecordedNotes(nr,doNotRecordPlayback,startIndex);
