@@ -1,0 +1,58 @@
+/*** many styles are copied from Musical Playground and work great in vanilla JS! ***/
+
+.piano-keyboard {
+	overflow: auto; height: 32vh;       /* overridden in code */
+	min-height: 170px;    width: 100%;
+	white-space: nowrap;  background-color: #e0e0e0;
+}
+.piano-drumpad {
+	overflow: auto; 
+	min-height: 50px;    width: 100%;
+	white-space: nowrap;  background-color: #e0e0e0;
+}
+.piano-key {
+    touch-action: none;
+    -ms-touch-action: none;
+    position: relative;
+    vertical-align: top;
+    border: solid black 1px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+.piano-key-white {
+    width: 39px; /* was: 12vw; */
+    height: 25vh;   /* overridden in code */
+    min-height: 140px;
+    background-color: white; 
+    z-index: 5;
+}  
+
+.piano-key-drums {
+    width: 10vw;
+    height: 20px; 
+    font-size: 10pt;
+    white-space: normal;
+    background-color: #d0d0d0;
+    border-radius: 10px;
+    z-index: 5;
+    overflow: hidden;
+}  
+
+.piano-key-black {
+    width: 26px; /* was: 8vw; */
+    margin-left: -13px; /* was: -4vw; */
+    height: 12vh;   /* overridden in code */
+    min-height: 70px;
+    background-color: black;
+    z-index: 10;
+}
+
+/* Shiftback has to shift back a whole white key to make the piano keys overlap properly. */
+.piano-key-shiftback {
+    margin-left: -13px; /* was: -4vw; */
+}
+
+.piano-key-down {
+    background-color: pink;
+}

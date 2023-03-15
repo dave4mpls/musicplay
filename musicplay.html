@@ -1,0 +1,1731 @@
+<!DOCTYPE html>
+<HTML>
+<HEAD>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<TITLE>Musical Playground</TITLE>
+<LINK REL="stylesheet" TYPE="text/css" HREF="pianokeys.css">
+<LINK REL="stylesheet" TYPE="text/css" HREF="drawbars.css">
+<STYLE TYPE="text/css">
+.bigButton {
+	font-size: 30pt;
+}
+.drumpad {
+	max-height: 70px;
+	min-height: 70px;
+	height: 70px;
+}
+.drumkey {
+	font-size: 12pt;
+	min-height: 40px;
+}
+.trhcell {
+	font-weight: bold;
+	border: thin solid black;
+	background-color: #e0e0e0;
+	font-size: 10pt;
+	font-family: Arial, sans-serif;
+}
+.trcell {
+	font-weight: normal;
+	border: thin solid black;
+	background-color: white;
+	font-size: 10pt;
+	font-family: Arial, sans-serif;
+}
+.eighthbeat {
+    border-right: 2px solid black;
+}
+.quarterbeat {
+    border-right: 4px solid black;
+}
+/*
+    Nice tabs that can work on their own with the selectTab
+    and selectThisTab functions, and/or the auto-tab feature.
+    See JsonLoadSave.html test/documentation for examples.
+*/
+.tab {
+    border-left: thin solid black;
+    border-right: thin solid black;
+    border-top: thin solid black;
+    border-bottom: none;
+    border-top-left-radius: 12pt;
+    border-top-right-radius: 12pt;
+    padding-left: 6px; padding-right: 6px;
+    font-size: 16pt;
+    padding-top: 6px; padding-bottom: 6px;
+    font-weight: bold;
+    text-decoration: none;
+    color: black; background-color: white;
+    display: inline-block;
+    *display: inline; zoom: 1;
+}
+
+.smalltab {
+    border-left: thin solid black;
+    border-right: thin solid black;
+    border-top: thin solid black;
+    border-bottom: none;
+    border-top-left-radius: 8pt;
+    border-top-right-radius: 8pt;
+    padding-left: 6px; padding-right: 6px;
+    font-size: 12pt;
+    padding-top: 6px; padding-bottom: 6px;
+    font-weight: bold;
+    text-decoration: none;
+    color: black; background-color: white;
+    display: inline-block;
+    *display: inline; zoom: 1;
+}
+
+.lefttab {
+    border-left: thin solid black;
+    border-top: thin solid black;
+    border-bottom: thin solid black;
+    border-top-left-radius: 12pt;
+    border-bottom-left-radius: 12pt;
+    padding-left: 6px; padding-right: 6px;
+    font-size: 16pt;
+    padding-top: 6px; padding-bottom: 6px;
+    font-weight: bold;
+    text-decoration: none;
+    color: black; background-color: white;
+    display: inline-block;
+    *display: inline; zoom: 1;
+    text-align: right;
+}
+
+.tabbottomborder {
+    border-left: none;
+    border-right: none;
+    border-top: none;
+    border-bottom: thin solid black;
+}
+
+*[data-tab-selected="1"] {
+    /* any tab with a data-tab-selected attribute of 1 is automatically selected! */
+    background-color: black; color: white;
+}
+
+*[data-tab-panel-selected="0"] {
+    display: none;
+}
+
+*[data-tab-panel-selected="1"] {
+    display: table-row;
+}
+
+.rt-tool-html-class {   /* for overriding styles of dropdowns in rich text toolbar */
+
+}
+
+</STYLE>
+<SCRIPT TYPE="text/javascript" LANGUAGE="javascript" SRC="pianokeys.js"></SCRIPT>
+<SCRIPT TYPE="text/javascript" LANGUAGE="javascript" SRC="tinysynth.js"></SCRIPT><!-- not needed for drawbar synth  - but testing none the less -->
+<SCRIPT TYPE="text/javascript" LANGUAGE="javascript">
+function el(x) { return document.getElementById(x); }
+
+"use strict";
+
+function selectTab(thisParent, thisElemTabName) {
+	// select any given tab within a parent element that contains tabs as its direct children
+	// the parent element can also contain other elements such as <br/>, for formatting, which are ignored
+	// since they don't have a data-tabname attribute
+	// the parent must have a data-tab-panelcontainer attribute that points to the id of the
+	// container of the panels for the tabs
+
+	// first: locate the panel parent that goes with the tab parent
+	var thisPanelParentName = thisParent.getAttribute("data-tab-panelcontainer");
+	if (!thisPanelParentName) throw ("Tab error: parent node of clickable tab does not have data-tab-panelcontainer attribute indicating where the collection of panels is");
+	var thisPanelParent = document.getElementById(thisPanelParentName);
+	if (!thisPanelParent) throw ("Tab error: when processing tabs in '" + thisParent.id + "', element referred to by data-tab-panelcontainer, '" + thisPanelParentName + "', does not exist")
+	// check to see if a tab is already selected.  If it is, run its blur event, and if the blur
+	// event returns true, we do NOT change the selection of the tab.
+	var blurTabName = "_NO_FORMER_TAB_";
+	var selectedTabs = thisPanelParent.querySelectorAll("[data-tab-panel-selected=\"1\"]");
+	if (!selectedTabs || selectedTabs.length === 0) { }  // on empty set of tabs, blur event is not run.
+	else
+	{
+		var blurTab = selectedTabs[0];
+		if (blurTab.hasAttribute("data-tabname")) { blurTabName = blurTab.getAttribute("data-tabname"); }
+		var cancelTabSelect = false;
+		if (blurTabName == thisElemTabName)
+		{ }      // don't run the blur event if we're selecting the same tab again
+		else {
+			if (thisParent.hasAttribute("data-tab-onblur")) cancelTabSelect = eval(thisParent.getAttribute("data-tab-onblur"));
+			if (cancelTabSelect) return;
+		}
+	}
+
+	// now: move the tab
+	for (var i = 0; i < thisParent.children.length; i++) {
+		if (thisParent.children[i].getAttribute("data-tabname")) {
+			if (thisParent.children[i].getAttribute("data-tabname") === thisElemTabName)
+				thisParent.children[i].setAttribute("data-tab-selected", "1");
+			else
+				thisParent.children[i].setAttribute("data-tab-selected", "0");
+		}
+	}
+	// and select the appropriate panel, executing the focus event
+	for (var i = 0; i < thisPanelParent.children.length; i++) {
+		if (thisPanelParent.children[i].getAttribute("data-tabname")) {
+			if (thisPanelParent.children[i].getAttribute("data-tabname") === thisElemTabName)
+			{   // when turning on a selected tab, find out if it has a cached lazy-load function,
+				// and if it does, expand the UI before enabling the tab.  Also, if there are any sub-object DIV's (data-isobject="1") within, expand those too.
+				//
+				var selectedRow = thisPanelParent.children[i];
+				if (selectedRow && selectedRow.id) {
+					if (hasLazyLoad(selectedRow.id)) {
+						expandLazyLoad(selectedRow.id);  // has no effect if no lazy load data stored
+						if (isReadOnlySurvey) setReadOnly();
+					}
+				}
+				var insideObjects = selectedRow.querySelectorAll('div[data-isobject="1"]');
+				if (insideObjects) {
+					for (var ioi = 0; ioi < insideObjects.length; ioi++) {
+						expandLazyLoad(insideObjects[ioi].id);  // has no effect if the object isn't lazy-loaded
+					}
+				}
+				selectedRow.setAttribute("data-tab-panel-selected", "1");
+				var focusTab = selectedRow;
+				if (blurTabName == thisElemTabName) { }  // Don't call the onfocus event if we didn't actually change tabs (e.g. called selectTab on the tab we're already on).
+				else {
+					if (thisParent.hasAttribute("data-tab-onfocus")) { eval(thisParent.getAttribute("data-tab-onfocus")); }  // DW 11/20/20: new events for tab focus and blur
+				}
+			}
+			else
+			{
+				thisPanelParent.children[i].setAttribute("data-tab-panel-selected", "0");
+			}
+		}
+	}
+	if (thisPanelParent.hasAttribute("data-onselect"))
+	{   // DW 11/17/20: data-onselect event has access to thisParent, thisElemTabName, thisPanelParent, etc.
+		eval(thisPanelParent.getAttribute("data-onselect"));
+	}
+}
+
+function selectThisTab(event) {
+	// Select this tab-- put 'onclick="selectThisTab(event)"', exactly as written, into the onclick
+	// event for any tabs, and your tabs will be activated.  You can set a default tab by putting
+	// data-tab-selected=1 only on the default tab and data-tab-panel-selected=1 on the selected panel
+	// (and data-tab-panel-selected=0 on all the others, so they hide properly).  OR, you can call
+	// selectTab(..) above in your initialization code to set the default tab.
+	event.preventDefault();
+	var thisElem = event.target;
+	var thisElemTabName = thisElem.getAttribute("data-tabname");
+	var thisParent = thisElem.parentNode;
+	selectTab(thisParent, thisElemTabName);
+}
+
+function recordPlaybackObject() {
+	this.notes = [ ];		// a note is an array of objects with properties delta and midiMessage.
+	this.startRecording = function() { this.notes = [ ]; }
+}
+
+function insertDrawbars(destDiv, instrumentObject) {
+	//--- inserts drawbars into a Div to control an instrument's harmonics
+	var ndb = instrumentObject.getNumDrawbars();
+	for (var i = 0; i < ndb; i++) {
+		var setupDrawbar = function(db,ndb) {
+			dbl = ["16'","5<sup>1/3</sup>'","8'","4'","2<sup>2/3</sup>'","2","1<sup>3/5</sup>'","1<sup>1/3</sup>'","1'"];
+			var newDrawbar = document.createElement("input");
+			newDrawbar.type = "range";
+			newDrawbar.className = "drawbar";
+			newDrawbar.min = 0; newDrawbar.max = 8;
+			newDrawbar.value = instrumentObject.getDrawbarDefault(ndb-db-1);
+			newDrawbar.addEventListener("change", function(evt) {
+				instrumentObject.setDrawbar(ndb-db-1, parseInt(newDrawbar.value,10), 0);
+			});
+			destDiv.appendChild(newDrawbar);
+			var drawbarLabel = document.createElement("span"); drawbarLabel.innerHTML = dbl[ndb-db-1];
+			var drawbarBr = document.createElement("br"); destDiv.appendChild(drawbarLabel); destDiv.appendChild(drawbarBr);
+		};
+		setupDrawbar(i,ndb);
+	}
+}
+
+function insertEnvelope(destDiv, instrumentObject) {
+	//--- draws the envelope controls
+	var ienv = instrumentObject.getEnvelopeObject();
+	var addParameter = function(parmName, minValue, maxValue, label) {
+		var newSlider = document.createElement("input"); newSlider.type = "range";
+		newSlider.className = "other-slider";
+ 		newSlider.min = minValue; newSlider.max = maxValue; newSlider.value = ienv[parmName];
+		var sliderLabel = document.createElement("span"); sliderLabel.innerText = label;
+		var sliderBr = document.createElement("br");
+		newSlider.addEventListener("change", function(evt) {
+			instrumentObject.setEnvelope(parmName, parseInt(newSlider.value,10));
+		});
+		destDiv.appendChild(newSlider); destDiv.appendChild(sliderLabel); destDiv.appendChild(sliderBr);
+	};
+	var maxDelay = 1000;		// max delay for an envelope time parameter is 1s
+	addParameter("a",0,maxDelay,"Attack");
+	addParameter("h",0,maxDelay,"Hold");
+	addParameter("d",0,maxDelay,"Decay");
+	addParameter("s",0,100,"Sustain (%Max)");
+	addParameter("r",0,maxDelay*4,"Release");		// Release allows much longer time configuration to make ringing sounds.
+	addParameter("expFlag",0,1,"Exponential");
+}
+
+function insertGeneralControls(destDiv, instrumentObject) {
+	//--- some more controls I like
+	var addZeroOneSlider = function(name, sliderName) {
+		var newSlider = document.createElement("input"); newSlider.type = "range"; newSlider.className = "other-slider";
+		newSlider.min = 0; newSlider.max = 1; newSlider.step = 0.05; newSlider.value = instrumentObject["get" + sliderName]();
+		var sliderLabel = document.createElement("span"); sliderLabel.innerText = name;
+		var sliderBr = document.createElement("br");
+		newSlider.addEventListener("change", function(evt) { instrumentObject["set"+sliderName](parseFloat(newSlider.value),0); });
+		destDiv.appendChild(newSlider); destDiv.appendChild(sliderLabel); destDiv.appendChild(sliderBr);
+	};
+	addZeroOneSlider("Volume", "MainVolume");
+	addZeroOneSlider("Tremolo Freq", "TremoloFrequency");
+	addZeroOneSlider("Tremolo Gain", "TremoloGain");
+	addZeroOneSlider("Pitch Bend", "PitchBend");
+	addZeroOneSlider("Pitch Bend Sensitivity", "PitchBendSensitivity");
+	addZeroOneSlider("Vibrato Freq", "VibratoFrequency");
+	addZeroOneSlider("Vibrato Gain", "VibratoGain");
+}
+
+var adjWave;
+var synth; 		// tinysynth
+
+//--- tinysynth testing routines from tinysynth website
+
+function loadMidi(files){
+  var reader = new FileReader();
+  reader.onload=function(e) {
+    synth.loadMIDI(reader.result);
+  };
+  reader.readAsArrayBuffer(files[0]);
+}
+function playMidi(){
+  synth.playMIDI();
+}
+function stopMidi(){
+  synth.stopMIDI();
+}
+function SetProgram(p){
+  synth.send([0xc0,p]);
+}
+var minVelocity = 50;
+var maxVelocity = 127;
+var repeatKey = 0;
+
+var currentTrack = 1;	// index into the tracks array for keys being played right now
+
+var initialtracks = [		// here are the default values for the tracks where we record, in order to make our auto-accompaniment go!
+	{ channel: 9, category: 256, instrument: 256, messages: [ ], },	// drum track comes first
+	{ channel: 0, category: 0, keyboard: true, instrument: 0, messages: [ ], },
+	{ channel: 1, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 2, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 3, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 4, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 5, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 6, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 7, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 8, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 10, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 11, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 12, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 13, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 14, category: 0, instrument: 0, messages: [ ], },
+	{ channel: 15, category: 0, instrument: 0, messages: [ ], },
+];
+
+var tracks = JSON.parse(JSON.stringify(initialtracks));  // here are the actual tracks we record in
+
+function currentTime() { var d = new Date(); return d.getTime(); }		// # of milliseconds
+
+function loopTrack(tracki)
+{	// function to start looping a track immediately
+	tracks[tracki].playing = true;
+	if (tracks[tracki].length == 0) return;
+	var playnote = function(msgi) {
+		if (!tracks[tracki].playing) { stopTrack(tracki); return; }
+		var thisWait = tracks[tracki].messages[msgi].waitTime;
+		setTimeout(function() {
+			synth.send(tracks[tracki].messages[msgi].data);
+			msgi++; if (msgi >= tracks[tracki].messages.length) return;	// playnote just STOPS at the end of the track -- it depends on playLOOP to loop it at the correct track length time.
+			playnote(msgi);
+		}, tracks[tracki].messages[msgi].waitTime);
+	};
+	var playloop = function() {
+		setTimeout(function() {
+			if (!tracks[tracki].playing) { stopTrack(tracki); return; }
+			tracks[tracki].lastLoopTime = currentTime();
+			playnote(0);
+			playloop();
+		}, tracks[tracki].loopLength);
+		tracks[tracki].lastLoopTime = currentTime();
+		playnote(0);
+	}
+	playloop();
+}
+
+function stopTrack(tracki)
+{
+	var stopMidiMessage = [ 0xB0 + tracks[tracki].channel, 0x7B, 0 ];
+	synth.send(stopMidiMessage);
+	tracks[tracki].playing = false;
+}
+
+function stopAllTracks()
+{
+	for (var i = 0; i < tracks.length; i++) stopTrack(i);
+}
+
+
+var accompOptions = ["None","Translate C Major","Fill From Lowest"];
+var ACCOMP_NONE = 0, ACCOMP_CMAJOR = 1, ACCOMP_LOWESTFILL = 2;
+var accompKeyOptions = ["Compact C Major", "Full"]
+var ACCOMP_KEY_CMAJOR = 0, ACCOMP_FULL = 1;
+var melodyKeyOptions = ["Normal", "Pentatonic", "Blues"];
+
+function getAccompOptions(n)
+{
+	var outstr = ""; var i = 0;
+	for (i = 0; i <accompOptions.length; i++) {
+		outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": " + accompOptions[i] + "</option>";
+	}
+	return outstr;
+}
+
+function getMelodyKeyOptions(n)
+{
+	var outstr = ""; var i = 0;
+	for (i = 0; i <melodyKeyOptions.length; i++) {
+		outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": " + melodyKeyOptions[i] + "</option>";
+	}
+	return outstr;
+}
+
+function getAccompKeyOptions(n)
+{
+	var outstr = ""; var i = 0;
+	for (i = 0; i <accompKeyOptions.length; i++) {
+		outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": " + accompKeyOptions[i] + "</option>";
+	}
+	return outstr;
+}
+
+function getTrackOptions(n)
+{
+	var outstr = ""; var i = 0;
+	outstr += "<option value=\"-1\" " + (n===""||n===undefined||n===null?" selected ":"") + ">None</option>";
+	for (i = 0; i <tracks.length; i++) {
+		outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + (i+1) + "</option>";
+	}
+	return outstr;
+}
+
+function getInstrumentOptions(n)
+{	// gets a list of Option tags for the instruments, with instrument n being selected.
+	var outstr = ""; var i = 0;
+	for (i = 0; i <128; i++) {
+		outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": " + synth.getTimbreName(0,i) + "</option>";
+	}
+	i = 256;
+	outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": Standard Drums</option>";
+	return outstr;
+}
+
+var gmCategories = [
+	{ name: "Piano", low: 0, high: 7 },
+	{ name: "Chromatic Percussion", low: 8, high: 15 },
+	{ name: "Organ", low: 16, high: 23 },
+	{ name: "Guitar", low: 24, high: 31 },
+	{ name: "Bass", low: 32, high: 39 },
+	{ name: "Strings", low: 40, high: 47 },
+	{ name: "Ensemble", low: 48, high: 55 },
+	{ name: "Brass", low: 56, high: 63 },
+	{ name: "Reed", low: 64, high: 71 },
+	{ name: "Pipe", low: 72, high: 79 },
+	{ name: "Synth Lead", low: 80, high: 87 },
+	{ name: "Synth Pad", low: 88, high: 95 },
+	{ name: "Synth Effects", low: 96, high: 103 },
+	{ name: "Ethnic", low: 104, high: 111 },
+	{ name: "Percussive", low: 112, high: 119 },
+	{ name: "Sound Effects", low: 120, high: 127 },
+	{ name: "Drums", low: 256, high: 256 }
+];
+
+function getCategoryForInstrument(n)
+{
+	for (var i = 0; i < gmCategories.length; i++) { 
+		if (gmCategories[i].low <= n && gmCategories[i].high >= n) return gmCategories[i];
+	}
+}
+
+function getInstrumentCategories(n)
+{	// n should be an instrument IN the category.
+	var outstr = ""; var i = 0;
+	for (i = 0; i < gmCategories.length; i++) {
+		outstr += "<option value=\"" + gmCategories[i].low + "\" " + (gmCategories[i].low<=n && gmCategories[i].high>=n ? " selected " : "") + ">" + i + ": " + gmCategories[i].name + "</option>";
+	}
+	return outstr;
+}
+
+function getInstrumentOptionsForCategory(n, low)
+{	// gets a list of Option tags for the instruments, with instrument n being selected.
+	// low is the first number in the currently selected category and it only shows 
+	var outstr = "<option value=0 " + (n < 0 ? " selected " : " ") + ">--Select--</option>"; var i = 0;
+	var high = low + 7;
+	if (high > 256) high = 256;
+	for (i = low; i <=high; i++) {
+		if (i == 256) {
+			outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": Standard Drums</option>";
+		} else {
+			outstr += "<option value=" + i + " " + (i==n ? " selected " : "") + ">" + i + ": " + synth.getTimbreName(0,i) + "</option>";
+		}
+	}
+	return outstr;
+}
+
+var recordingNow = false;
+
+var debugmsg = false;
+
+function clone(x) { return JSON.parse(JSON.stringify(x)); }
+
+function makeMidiEventFromMessage(msg, manufacturer, name, id)
+{
+	var outevent = {
+		data: clone(msg),
+		currentTarget: {
+			manufacturer: manufacturer,
+			name: name,
+			id: id
+		}
+	};
+	return outevent;
+}
+
+function exampleHardwareTimerSchedule() {
+	// it's actually really simple to schedule the hardware audio timer out in advance using regular midi message sending!
+	// I believe for external devices it uses setTimeout() though.
+	// here is an example of scheduling a chromatic scale on channel 0 in advance.
+	var ct = synth.currentTime(); 
+	for (var i = 32; i < 94; i++) { 
+		synth.send([0x90,i,0x7F], ct + (i-32) * .500); 
+		synth.send([0x80,i,0x7F], ct + (i-32) * .500 + .480); 
+	}
+}
+
+var midiCommands = [ "none","none","none","none","none","none","none","none",
+		"noteOff","noteOn","afterTouch","controller","patch","channelPressure","pitchBend","system" ];  // friendly names for all the top nibbles of first midi command
+
+var midiCommandNumbers = { "none": 0, "noteOff": 8, "noteOn": 9, "afterTouch": 10, "controller": 11, "patch": 12,
+	"channelPressure": 13, "pitchBend": 14, "system": 15 };  // must match midi commands; fast conversion object for converting back
+
+function makeFriendlyMidiEvent(e)
+{	// A friendly MIDI event is converted from one from the Chrome midi routines,
+	// such that it is easy to access the parts of the message and see what they are.
+	var fe = { accomp: false };		// functions can turn this on to set up auto accompaniment keys
+	try {
+		if (e.currentTarget) {
+			fe.device = e.currentTarget.manufacturer + ":" + e.currentTarget.name;
+			fe.id = e.currentTarget.id;
+		}
+		else {
+			fe.device = "unknown";
+			fe.id = "unknown";
+		}
+	} catch (ex1) { }
+	try {
+		fe.data = clone(e.data);
+		fe.channel = e.data[0] & 0x0F;
+		fe.command = midiCommands[(e.data[0] & 0xF0)>>4];
+		fe.musicalCommand = (e.data[0] >= 0x80 && e.data[0] < 0xEF);
+		fe.note = e.data[1];
+		fe.sourceNote = fe.device + ":" + fe.note;	// unique identifier for a particular note on a particular device
+		if (e.data.length > 2) fe.velocity = e.data[2]; 
+	} catch (ex2) { }
+	try {	// always good to add a timestamp of when it happened
+		fe.time = synth.currentTime();
+	} catch (ex3) { }
+	return fe;
+}
+
+function fitToRange(x,low,high) {
+	if (x<low) return low;
+	if (x>high) return high;
+	return x;
+}
+
+function updateFriendlyData(fe) {
+	// updates the data element of a friendly midi event with the changes in the friendly fields.
+	var newData = [ ((midiCommandNumbers[fe.command])<<4) + fitToRange(fe.channel,0,15),
+				fitToRange(fe.note,0,127), fitToRange(fe.velocity,0,127) ];
+	if (!fe.data || fe.data[2] !== undefined) {  // fe.data.length may be undefined because we may have been sent an assoc array rather than regular array
+		fe.data = newData;
+	} else {
+		newData.splice(2,1);
+		fe.data = newData;
+	}
+	return fe;
+}
+
+var defaultNoteFunction = 
+	"var process = function(n) { \r\n"
+	+ "\t// Process a MIDI event or note as it comes in, to add custom functionality.\r\n"
+	+ "\t// n contains these fields:\r\n"
+	+ "\t// n.data - the original MIDI data as a byte array\r\n"
+	+ "\t// n.device - the device that sent it: 'internal:main' for onscreen keyboard,\r\n"
+	+ "\t//   or 'internal:accomp' for onscreen accompaniment, \r\n"
+	+ "\t//   or 'internal:drums' for onscreen drums, \r\n"
+	+ "\t//   or manufacturer:name for a real device\r\n"
+	+ "\t// n.time - current time in seconds\r\n"
+	+ "\t// n.channel - MIDI channel 0-15 (9 is drums)\r\n"
+	+ "\t// n.command - MIDI command e.g. noteOn, noteOff, afterTouch, patch, controller, channelPressure, pitchBend\r\n"
+	+ "\t// n.note - MIDI note number\r\n"
+	+ "\t// n.velocity - MIDI note velocity (volume)\r\n"
+	+ "\t// n.accomp - true if this should be played as an accompaniment note\r\n"
+	+ "\t// n.musicalCommand - true for musical commands like note on, note off, program change, etc.\r\n"
+	+ "\t// To send your note on to the next stage, use\r\n"
+	+ "\t// play(n)   { to clone your note, use clone(n) }\r\n"
+	+ "\t// Change n.time if you want to delay your note's playback.\r\n"
+	+ "\t// Other functions you can call:\r\n"
+	+ "\t//  loopSame() : loops the recording on the same channel\r\n"
+	+ "\t//  loopNext() : loops the recording and goes to the next channel\r\n"
+	+ "\t//  currentChannel() : gets the current recording channel\r\n"
+	+ "\t//  \r\n"
+	+ "\t// Shift channel to channel we are recording on, except for drums\r\n"
+	+ "\tif (n.musicalCommand && n.channel != 9) n.channel = currentChannel();\r\n"
+	+ "\t// Minimum velocity to help with sticky touch sensitive keys\r\n"
+	+ "\tif (n.command=='noteOn' && n.velocity < minVelocity) n.velocity = minVelocity;\r\n"
+	+ "\tif (n.command=='noteOn' && n.velocity > maxVelocity) n.velocity = maxVelocity;\r\n"
+	+ "\t// Example of assigning range of accompaniment keys on a particular device\r\n"
+	+ "\tif (n.device.includes('AKAI') && (n.command=='noteOn'||n.command=='noteOff') && n.note >= 16 && n.note <= 25) n.accomp = true;\r\n"
+	+ "\tplay(n);\r\n"
+	+ "\tfor (var i = 0; i < tracks.length; i++) {\r\n"
+	+ "\t\tif (tracks[i].replay===n.channel) {\r\n"
+	+ "\t\t\tlet n2 = clone(n); n2.channel = tracks[i].channel; n2.note += tracks[i].offset; play(n2);\r\n"
+	+ "\t\t}\r\n"
+	+ "\t}\r\n"
+	+ "}";
+
+var currentNoteFunction = defaultNoteFunction;
+
+function processNote(e, noteFunctionText) {
+	// Processes a midi event from the real or virtual midi instruments, converting it to friendly form,
+	// doing basic transformations, and doing custom javascript transformations using noteFunctionText, which
+	// must be modeled on defaultNoteFunction, above.
+	
+	// prepare the event and the special functions we use
+	var fe = makeFriendlyMidiEvent(e);
+	var play = function(n) { 
+		notePostProcessing(updateFriendlyData(n));
+	};
+	var loopSame = function(n) {
+		loopRecording(0);
+	};
+	var loopNext = function(n) {
+		loopRecording(1);
+	};
+	var currentChannel = function() { 
+		return tracks[currentTrack].channel;
+	};
+	// execute the current note function
+	try {
+		eval(currentNoteFunction);
+		process(fe);
+	} catch(ex1) { }
+}
+
+function updateNoteFunction(e) {
+	// when the user updates the note function we check for syntax errors and if there aren't any, we set the new note function
+	var newCode = e.target.value;
+	var syntaxError = "";
+	try {
+		eval(newCode);
+	} catch (ex1){ syntaxError = ex1.message; }
+	if (syntaxError != "") { alert("There is an error in your code, so it is not being used: " + syntaxError); return; }
+	currentNoteFunction = newCode;
+}
+
+function notePostProcessing(fe) {
+	// given a note event (or MIDI event of any kind) in friendly form with updated data, 
+	// do the built-in final processing of the note event such as recording it
+	if (fe.time <= synth.currentTime()) 
+		synth.send(fe.data);	// immediate send
+	else
+		synth.send(fe.data,fe.time);  // delayed send
+}
+
+/* former code for handling keys from before:
+
+	var timeDiff = 0;
+	if (debugmsg) { console.log(makeFriendlyMidiEvent(message)); }
+	// this if statement applies to all MIDI messages that play things to a channel
+	var cmdcode = (message.data[0] & 0xF0);
+	if (cmdcode >= 0x80 && cmdcode <= 0xE0) {
+		// fix the channel to match the track we are recording (only for MIDI messages 8-E meaning note off, note on, program change, pitch bend, etc.)
+		message.data[0] = (message.data[0] & 0xF0) + tracks[currentTrack].channel;
+		// preprocess the key: for example, minimum velocity that adjusts keyboards that are too sensitive
+		// (only for note on and note off)
+		if (cmdcode >= 0x80 && cmdcode <= 0x9F) {
+			if (message.data[2] < minVelocity) message.data[2] = minVelocity;
+			if (message.data[2] > maxVelocity) message.data[2] = maxVelocity;
+		}
+		// record the key into our track
+		if (recordingNow && !((cmdcode == 0x80 || cmdcode == 0x90) && (message.data[1] >= repeatKey && message.data[1] <= repeatKey + 1)))
+		{
+			timeDiff = 0;
+			if (tracks[currentTrack].messages.length == 0) {
+				var n = currentTime();
+				tracks[currentTrack].lastTime = n;
+				if (currentTrack > 0 && tracks[currentTrack-1].messages.length > 0 && tracks[currentTrack-1].playing && tracks[currentTrack-1].lastLoopTime)
+				{	// If we're layering on top of a previous track, we mark the start time of this track as actually being when the previous track's loop started, so that
+					// we have the right amount of silence.
+					timeDiff = n - tracks[currentTrack-1].lastLoopTime;
+				}
+				tracks[currentTrack].startTime = tracks[currentTrack].lastTime - timeDiff;	// start time is essential to figuring out the length of the track, and rounding it to a multiple of previous tracks for proper alignment...
+			} else {
+				var n = currentTime();
+				timeDiff = n - tracks[currentTrack].lastTime;
+				tracks[currentTrack].lastTime = n;
+			}
+			tracks[currentTrack].messages.push({ waitTime: timeDiff, data: message.data});
+		}
+	}
+	// now, specific types of midi messages are processed here
+	if ((message.data[0] & 0xF0) == 0x90) {	// note on
+		// handle special keys
+		if (message.data[1] == repeatKey) {	// special case: the repeat key was pressed
+			tracks[currentTrack].endTime = currentTime();
+			tracks[currentTrack].loopLength = tracks[currentTrack].endTime - tracks[currentTrack].startTime;
+			// we now have the exact loop length-- but we want it to be a rounded integer multiple of the previous track, if one was recorded, so the tracks sync.
+			if (currentTrack > 0 && tracks[currentTrack-1].messages.length > 0) {
+				var prevLength = tracks[currentTrack-1].loopLength;
+				var thisLength = tracks[currentTrack].loopLength;
+				var recip = false;
+				var ratio = thisLength / prevLength;
+				if (ratio < 0.6) { recip = true; ratio = 1 / ratio; }	// if the user is doing half of the beats in this track as the previous, we detect that and do a reciprocal.  But if they are doing say 0.9 or something, they probably just were trying to match the exact number of beats and came up short.
+				ratio = Math.round(ratio); if (recip) { ratio = 1 / ratio; }
+				var newLength = prevLength * ratio;
+				tracks[currentTrack].loopLength = newLength;
+			}
+			// now we actually loop the track
+			loopTrack(currentTrack);
+			currentTrack++;
+			return;
+		}
+		if (message.data[1] == repeatKey+1) {	// special case: key to the right of the repeat key (1/2step up) is the Stop key
+			stopAllTracks();
+			return;
+		}
+		// send the message to play the note
+		synth.send(message.data);
+	}
+	else if ((message.data[0] & 0xF0) == 0x80) { // note off
+		// handle note-offs for special keys -- generally they just don't sound
+		if (message.data[1] == repeatKey) return;
+		if (message.data[1] == repeatKey+1) return;  // repeatkey + 1 is stop key
+		// otherwise it's a regular note off which we just send
+		synth.send(message.data);
+	}
+	else {
+		synth.send(message.data);
+	}
+*/
+
+var currentRecordSliderLevel = 0;
+
+function updatePlayRecordSliders()
+{
+	try {
+		var ps = dg("playSlider"); var pso = dg("playSliderOutside");
+		if (currentPlaybackControl) {
+			// playing
+			var pctDone = 100;
+			if (!currentPlaybackControl.finished) {
+				pctDone = (1+currentPlaybackControl.getLastPlayedIndex()) / currentPlaybackControl.notes.length * 100.0;
+			}
+			if (pctDone<0) pctDone = 0;
+			if (pctDone>100) pctDone = 100;
+			ps.style.width = pctDone + "%";
+			pso.style.visibility = "visible";
+		} else {
+			// not playing
+			pso.style.visibility = "hidden";
+		}
+	} catch (ex1) { }
+	try {
+		var rs = dg("recordSlider"); var rso = dg("recordSliderOutside");
+		if (synth.recordings && synth.recordings.includes(currentRecording)) {
+			// recording
+			currentRecordSliderLevel += 20;
+			if (currentRecordSliderLevel > 100) currentRecordSliderLevel = 0;
+			rs.style.width = currentRecordSliderLevel + "%";
+			rso.style.visibility = "visible";
+		} else {
+			// not recording
+			rso.style.visibility = "hidden";
+		}
+	} catch (ex2) { }
+}
+
+function Init(){
+  dg("txtAreaNoteCode").textContent = defaultNoteFunction;
+  synth=new WebAudioTinySynth({voices:64});
+  synth.setSoundfontPath("./bsoundfonts");
+  synth.setMasterVol(.50);
+  synth.setReverbLev(.50);
+  synth.loadInstruments([0,11,128],function(errObj) {	// load piano, drums, vibes
+	  el("inststatus").innerText = errObj.errMsg;
+  	  }, function() { el("inststatus").innerText = "Loaded successfully"; console.log("Instruments loaded."); },
+	  function(i,n) { console.log("Loading Instrument " + i + " of " + n); });  // shows example of progress callback
+  synth.setQuality(2);
+  synth.passThruMIDI = false;
+  var midiEventElem = dg("divMidiEvents");
+  setInterval(updatePlayRecordSliders, 333);
+  synth.onmidimessage = function(message) {
+    var fe = makeFriendlyMidiEvent(message);
+	if (fe.command == "noteOn" && onNextNoteDown) {
+		var funcToCall = onNextNoteDown;
+		onNextNoteDown = null;	// we clear out the onNextNoteDown function so it only calls once, but it can restart itself by filling itself in
+		funcToCall(message,fe);
+	}
+	midiEventElem.innerHTML = (fe.command) + "<br>" + "Ch " + (1+fe.channel) + "<br>Note " + fe.note + " " + getNoteNumberName(fe.note) + " / Vel " + fe.velocity + "<br>Dev: " + fe.device;
+	// routine that lets us modify the results of pressing piano keys
+	var timeDiff = 0;
+	if (debugmsg) { console.log(makeFriendlyMidiEvent(message)); }
+	processNote(message,currentNoteFunction);
+  };
+  setInterval(function(){
+    if (!synth.playing) return;
+    var st=synth.getPlayStatus();
+    document.getElementById("status").innerHTML="Play:"+st.play+"  Pos:"+st.curTick+"/"+st.maxTick;
+  },200);
+  selectTab(dg("tabContainer"),"KeyboardDrums")
+}
+
+var kbdTrack = 1;	// keyboard playing track
+
+function getKbdChannel() {
+	// get which channel was selected by the radio buttons
+	return tracks[kbdTrack].channel;
+}
+
+function onLoadFunction() {
+}
+
+function dg(x) { return document.getElementById(x); }
+
+function refreshMidiDevices()
+{
+	synth.setupMIDIDevices(function() { refreshMidiUI(); }, function() { el("midiinputs").innerText = "No Midi Device Support"; } )
+}
+
+function setKbdKeys()
+// set up the keys for the keyboard of the laptop if we're running on a laptop
+{
+	var kbdOffset = 0;
+	var playKeys = true;
+	var noteKeys = {
+		"Digit1": 59,
+		"KeyQ": 60, "Digit2": 61, "KeyW": 62, "Digit3": 63, "KeyE": 64,
+		"KeyR": 65, "Digit5": 66, "KeyT": 67, "Digit6": 68, "KeyY": 69, "Digit7": 70,
+		"KeyU": 71, "KeyI": 72, "Digit9": 73, "KeyO": 74, "Digit0": 75, "KeyP": 76,
+		"BracketLeft": 77, "Equal": 78, "BracketRight": 79
+	};
+	var drumKeys = {};
+	var drumKeySourceString = "ASDFGHJKLZXCVBNM";
+	var drumIndex = 0;
+	for (var i = 0; i < drumKeySourceString.length; i++) {
+		while (drumIndex < drumKeyBlock.length && !drumKeyBlock[drumIndex]) drumIndex++;
+		if (drumIndex > drumKeyBlock.length) break;
+		var thisKey = drumKeySourceString[i];
+		drumKeys["Key" + thisKey] = drumKeyBlock[drumIndex];
+		drumIndex++;
+	}
+	var keyEvent = function(ud,e) {
+		if (e.code=="Escape" && ud=="down") { playKeys = !playKeys; e.preventDefault(); return; }
+		else if (playKeys) {
+			if (ud=="down") {
+				if (e.code=="Comma") { kbdOffset-=12; e.preventDefault(); return; }
+				if (e.code=="Period") { kbdOffset+=12; e.preventDefault(); return; }
+				if (e.code=="ArrowLeft" || e.code=="Backspace") { mainStopButton(); e.preventDefault(); return; }
+				if (e.code=="ArrowRight") { mainRecordButton(); e.preventDefault(); return; }
+				if (e.code=="ArrowDown") { mainPlayButton(); e.preventDefault(); return; }
+				if (e.code=="ArrowUp" || e.code=="Enter" || e.code=="NumpadEnter") { mainLoopButton(); e.preventDefault(); return; }
+			}
+			if (noteKeys[e.code] && !e.repeat) {
+				var ch = parseInt(getKbdChannel(),10) & 0x0F;
+				var noteNumber = noteKeys[e.code] + kbdOffset;
+				var velocity = 127;
+				if (noteNumber>=0 && noteNumber<=127) {
+					synth.onmidimessage(makeMidiEventFromMessage([(ud=="down"? 0x90 : 0x80) + ch,noteNumber & 0x7F,velocity & 0x7F],"internal","keyboard","1"));
+				}
+				e.preventDefault(); 
+			}
+			else if (drumKeys[e.code]) {
+				var ch = 0x09;
+				var noteNumber = drumKeys[e.code];
+				var velocity = 127;
+				e.preventDefault();
+				synth.onmidimessage(makeMidiEventFromMessage([(ud=="down"? 0x90 : 0x80) + ch,noteNumber & 0x7F,velocity & 0x7F],"internal","keyboard","1"));
+			}
+		}
+	};
+	document.body.addEventListener("keydown", function(event) { keyEvent("down",event); });
+	document.body.addEventListener("keyup", function(event) { keyEvent("up",event); });
+}
+
+function userInitiatedAudioStart()
+{
+	Init();  // init tiny synth
+	dmAddChoices();  // init drum machine choice lists
+	refreshMidiDevices();
+	setKbdKeys();
+	//--- tinysynth keyboard setup
+	pianoKeyDisplay.createPianoKeyboard(el("tskeyboard"),0,127,25,21,108,function(x) {
+		x.keyDown = false;
+		x.onNoteOn = function(noteNumber, channel, velocity, keyButton, startTime) {
+			if (x.keyDown) return;	// debounce
+			if (keyButton) keyButton.style.backgroundColor = "pink";
+			x.keyDown = true;
+			var ch = parseInt(getKbdChannel(),10) & 0x0F;
+			synth.onmidimessage(makeMidiEventFromMessage([0x90 + ch,noteNumber & 0x7F,velocity & 0x7F],"internal","keyboard","1"));
+		};
+		x.onNoteOff = function(noteNumber, channel, keyButton, startTime) {
+			if (!x.keyDown) return; x.keyDown = false;
+			if (keyButton) keyButton.style.backgroundColor = "";
+			var ch = parseInt(getKbdChannel(),10) & 0x0F;
+			synth.onmidimessage(makeMidiEventFromMessage([0x80 + ch,noteNumber & 0x7F,0],"internal","keyboard","1"));
+		};
+	});
+	pianoKeyDisplay.createDrumPad(el("tsdrums"),9,127,20,35,127,function(d) { return synth.getTimbreName(1,d); },function(x) {
+	    x.keyDown = false;
+		x.onNoteOn = function(noteNumber, channel, velocity, keyButton, startTime) {
+			if (x.keyDown) return;	// debounce
+			if (keyButton) keyButton.style.backgroundColor = "pink";
+			x.keyDown = true;
+			var ch = 9;
+			synth.onmidimessage(makeMidiEventFromMessage([0x90 + ch,noteNumber & 0x7F,velocity & 0x7F],"internal","drums","1"));
+		};
+		x.onNoteOff = function(noteNumber, channel, keyButton, startTime) {
+			if (!x.keyDown) return; x.keyDown = false;
+			if (keyButton) keyButton.style.backgroundColor = "";
+			var ch = 9;
+			synth.onmidimessage(makeMidiEventFromMessage([0x80 + ch,noteNumber & 0x7F,0],"internal","drums","1"));
+		};
+	})
+	pianoKeyDisplay.createDrumPad(el("tsdrums2"),9,127,20,35,127,function(d) { return synth.getTimbreName(1,d); },function(x) {
+	    x.keyDown = false;
+		x.onNoteOn = function(noteNumber, channel, velocity, keyButton, startTime) {
+			if (x.keyDown) return;	// debounce
+			if (keyButton) keyButton.style.backgroundColor = "pink";
+			x.keyDown = true;
+			var ch = 9;
+			synth.onmidimessage(makeMidiEventFromMessage([0x90 + ch,noteNumber & 0x7F,velocity & 0x7F],"internal","drums","1"));
+		};
+		x.onNoteOff = function(noteNumber, channel, keyButton, startTime) {
+			if (!x.keyDown) return; x.keyDown = false;
+			if (keyButton) keyButton.style.backgroundColor = "";
+			var ch = 9;
+			synth.onmidimessage(makeMidiEventFromMessage([0x80 + ch,noteNumber & 0x7F,0],"internal","drums","1"));
+		};
+	})
+	dg("tsdrums").style.maxHeight = "80px";
+	dg("tsdrums2").style.maxHeight = "80px";
+	dg("Panel:Main").style.display = "";
+	dg("Panel:Start").style.display = "none";
+	refreshTrackDisplay();
+	loadDrumMachineNames();
+	setTimeout(dmMinorBeatTimer,100);
+}
+
+var numDrumMachines = 4;
+
+function getNoteNumberName(noteNumber)
+{
+	try {
+		var noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+		if (typeof(noteNumber)!=="number" || noteNumber < 0 || noteNumber > 127) return "N/A";
+		noteNumber = Math.floor(noteNumber);
+		return noteNames[noteNumber%12] + (Math.floor(noteNumber / 12) - 1);
+	} catch (ex) {
+		return "N/A";
+	}
+}
+
+function getDrumMachineItemName(thisDrum)
+{
+    if ((thisDrum & 0x80) != 0) {
+        // melodic
+        return getNoteNumberName(thisDrum & 0x7F);
+    } else {
+        // percussion
+        return synth.getTimbreName(1,thisDrum);
+    }
+}
+
+function loadDrumMachineNames()
+{
+    return;
+    for (var thisDrum of drumKeyBlock) {
+        if (thisDrum==0) continue;
+        for (var mi=0; mi<numDrumMachines; mi++) {
+            dg("DrumName" + thisDrum + "_" + mi).textContent = getDrumMachineItemName(thisDrum);
+        }
+    }
+}
+
+var numInputCheckboxes = 0, numOutputCheckboxes = 0;
+
+function readMidiUI() {
+	// reads the checkboxes in the input/output section to set up inputs and outputs
+	var inputList = [ ];
+	for (var i = 0; i < numInputCheckboxes; i++) {
+		if (el("midiinput_" + i).checked) inputList.push(el("midiinput_" + i).getAttribute("midiid"));
+	}
+	synth.setInput(inputList);
+	var outputList = [ ];
+	for (var i = 0; i < numOutputCheckboxes; i++) {
+		if (el("midioutput_" + i).checked) outputList.push(el("midioutput_" + i).getAttribute("midiid"));
+	}
+	synth.setOutput(outputList);
+}
+
+function refreshMidiUI() {
+	synth.refreshInputs(); synth.refreshOutputs();
+	var myInputs = synth.getInputs(); var myOutputs = synth.getOutputs();
+	el("midiinputs").innerHTML = ""; numInputCheckboxes = myInputs.length;
+	for (var i = 0; i < myInputs.length; i++) {
+		var newCheckbox = document.createElement("input"); newCheckbox.type="checkbox";
+		newCheckbox.checked = (synth.selectedInputs.indexOf(myInputs[i].id) !== -1);
+		newCheckbox.setAttribute("midiid",myInputs[i].id);
+		newCheckbox.id = "midiinput_" + i;
+		newCheckbox.addEventListener("click",readMidiUI);
+		var newLabel = document.createElement("span");
+		newLabel.innerText = myInputs[i].name;
+		var newBr = document.createElement("br");
+		el("midiinputs").appendChild(newCheckbox); el("midiinputs").appendChild(newLabel); el("midiinputs").appendChild(newBr);
+	}
+	var myOutputs = synth.getOutputs(); var myOutputs = synth.getOutputs();
+	el("midioutputs").innerHTML = ""; numOutputCheckboxes = myOutputs.length;
+	for (var i = 0; i < myOutputs.length; i++) {
+		var newCheckbox = document.createElement("input"); newCheckbox.type="checkbox";
+		newCheckbox.checked = (synth.selectedOutputs.indexOf(myOutputs[i].id) !== -1);
+		newCheckbox.setAttribute("midiid",myOutputs[i].id);
+		newCheckbox.id = "midioutput_" + i;
+		newCheckbox.addEventListener("click",readMidiUI);
+		var newLabel = document.createElement("span");
+		newLabel.innerText = myOutputs[i].name;
+		var newBr = document.createElement("br");
+		el("midioutputs").appendChild(newCheckbox); el("midioutputs").appendChild(newLabel); el("midioutputs").appendChild(newBr);
+	}
+}
+
+function enableDrawbar() {
+	el('drawbarstuff').style.display = '';
+	el('drawbarbutton').style.display = 'none';
+	//--- now add event listeners for controls of the drawbar organ
+	adjWave = new drawbarOrgan(synth.actx);		// the synth connects it to appropriate channel outputs when it is selected
+	synth.setProgramOverride(16,[[adjWave,-1]]);   // redirect the Drawbar Organ patch to the custom instrument.
+	insertDrawbars(el("drawbars"),adjWave);
+	insertEnvelope(el("envelope"),adjWave);
+	insertGeneralControls(el("generalcontrols"),adjWave);
+	synth.setProgram(0,16);  // set to organ
+	el("prog").value = 16;
+}
+
+
+var sf2process = null;
+
+function loadSoundfont(files){
+  var reader = new FileReader();
+  reader.onload=function(e) {
+	  sf2process = new sfProcessingClass();
+	  sf2process.loadSF2File(reader.result);
+  };
+  reader.readAsArrayBuffer(files[0]);
+}
+
+var DRUM_SNARE = 38;
+var DRUM_BASS = 35;
+var DRUM_TOM_HIGH = 48;
+var DRUM_TOM_FLOOR_LOW = 41;
+var DRUM_TOM_FLOOR_HIGH = 43;
+var DRUM_CYMBAL_CRASH = 49;
+var DRUM_CYMBAL_RIDE = 51;
+var DRUM_HI_HAT_OPEN = 46;
+var DRUM_HI_HAT_CLOSED = 42;
+var DRUM_TAMBOURINE = 54;
+var DRUM_BONGO_LOW = 61;
+var DRUM_BONGO_HIGH = 60;
+var DRUM_CLAP = 39;
+
+//-- convert a series of keys starting with C into common drum sounds,
+//-- useful for recording the drum track on a keyboard MIDI instrument
+var drumKeyBlock = [DRUM_BASS, 0, DRUM_SNARE, 0, DRUM_TOM_HIGH,
+	DRUM_TOM_FLOOR_LOW, DRUM_TOM_FLOOR_HIGH, DRUM_CYMBAL_CRASH, DRUM_CYMBAL_RIDE,
+	DRUM_HI_HAT_OPEN, DRUM_HI_HAT_CLOSED, DRUM_TAMBOURINE,DRUM_BONGO_LOW,
+	DRUM_BONGO_HIGH, DRUM_CLAP];
+
+for (var ni = 72; ni >= 36; ni--) {
+    drumKeyBlock.push(ni | 128);    // high bit set on note numbers in the drum list means we play accompaniment notes on the drum machine's selected channel
+}
+
+var drumChoiceBlock = [];
+for (var ni = 35; ni <= 81; ni++) {
+    drumChoiceBlock.push(ni);
+}
+for (var ni = 72; ni >= 36; ni--) {
+    drumChoiceBlock.push(ni | 128);
+}
+
+function drumkey(n)
+{	// Implement an immediate drum strike button for the given drum MIDI number.
+	// The DRUM_ constants provide values for N.
+	synth.send([0x99,n,0x7F,0]);
+	setTimeout(function() { synth.send([0x89,n,0x7F,0]); }, 20);
+}
+
+function loadTrackData(e)
+{
+	if (!e.isTrusted) return;
+	for (var i = 0; i < tracks.length; i++) {
+		if (dg("trRecord"+i).checked) currentTrack = i;
+		if (dg("trRecord"+i).checked) kbdTrack = i;
+		tracks[i].mute = (dg("trMute"+i).checked);
+		tracks[i].instrument = parseInt(dg("trInstrument"+i).value,10);
+		if (tracks[i].channel != 9 && (!e || e.target == dg("trInstrument"+i))) {
+			synth.send([(0xC0+tracks[i].channel),(tracks[i].instrument & 0x7F)]);
+			// we ONLY send the change program command if the instrument on this line is what changed,
+			// since some midi devices don't really have 16 independent channels, so changing one can change all of them
+		}
+		tracks[i].accomp = parseInt(dg("trAccomp"+i).value,10);
+		tracks[i].replay = parseInt(dg("trReplay"+i).value,10);
+		tracks[i].offset = parseInt(dg("trOffset"+i).value,10);
+	}
+}
+
+function changeInstrumentCategory(e) {
+	var i = parseInt(e.target.getAttribute("data-i"),10);
+	dg("trInstrument" + i).innerHTML = getInstrumentOptionsForCategory(-1,parseInt(e.target.value,10));
+}
+
+function htmlencode(x) {
+	if (!x) return "";
+	return x.replace(/&/gi,"&amp;").replace(/>/gi,"&gt;").replace(/</gi,"&lt;").replace(/["]/gi,"&quot;");
+}
+
+function delParentRow(event) {
+	var parentRow = event.target.parentElement.parentElement;
+	parentRow.parentElement.removeChild(parentRow);
+}
+
+function addDrumLine(event) {
+	var mi = parseInt(event.target.getAttribute('data-dm'),10);
+	var tbody = dg('DrumTbody' + mi);
+	var thisDrum = dg('DrumAddSelect_' + mi).value;
+	if (!thisDrum) return;
+	var outstr = "";
+	outstr += ("<td class=trcell><span style=\"display: inline-block; width: 180px; overflow: hidden;\" id=DrumName" + thisDrum + "_" + mi + ">" + htmlencode(getDrumMachineItemName(thisDrum)) + '</span><button onclick="javascript: delParentRow(event);">Remove</button></td>');
+	for (var bi = 0; bi < numBeatCols; bi++) {
+		var classes = "trcell beatcheck";
+		if (bi % 8 == 7) classes += " quarterbeat";
+		else if (bi % 4 == 3) classes += " eighthbeat";
+		outstr += ("<td class=\"" + classes + "\" onclick=\"javascript: setDrumBeat(event);\" id=DrumBeat" + thisDrum + "_" + bi + "_" + mi + ">&nbsp;&nbsp;&nbsp;&nbsp;</td>");
+	}
+	var rowElem = document.createElement("TR");
+	rowElem.innerHTML = outstr;
+	tbody.insertBefore(rowElem,tbody.rows[tbody.rows.length-1]);
+}
+
+var regularKeyAssignments = [];	// array actually used by key mapping routines-- faster than going directly to the UI
+
+var regularKeyActions = [ ["Start Recording", "startRecord"], ["Stop Recording", "stopRecord"], ["Record Next Track", "recordNext"], ["Lowest Accompaniment Note", "setLowest"], 
+	["Highest Accompaniment Note", "setHighest"], ["Play Accompaniment Chord", "playChord"], ["Play Drum", "playDrum"],["Toggle Channel On/Off","toggleMute"], 
+	["Set Channel Volume", "setVolume"], ["Set Channel Modulation", "setModulation"], ["Set Channel Pan", "setPan"], ["Set Master Reverb","setReverb"],
+	["Set Instrument for Current Channel","setInstrument"],
+	["Set Organ Drawbars for Current Channel","setDrawbars"],["Control Drawbars","controlDrawbars"],
+	["Start Drum Machine","startDrumMachine"], ["Stop Drum Machine","stopDrumMachine"], 
+	["Record Riff", "recordRiff"], ["Stop Recording Riff", "stopRiff"],["Play Riff","playRiff"] ];
+
+function reloadRegularKeyAssignments()
+{
+	var tbody = dg("tbodyRegularKeyAssignments");
+	regularKeyAssignments = [];
+	for (var i = 0; i < tbody.rows.length; i++) {
+		var thisAction = { key: "", action: "none", parameter: "" };
+		try {
+			thisAction.key = tbody.rows[i].children[0].children[0].value;
+		} catch (ex1) { }
+		try { 
+			thisAction.action = tbody.rows[i].children[1].children[0].value;
+		} catch (ex2) { }
+		try {
+			thisAction.parameter = tbody.rows[i].children[2].children[0].value;
+		} catch (ex3) { }
+		regularKeyAssignments.push(thisAction);
+	}
+}
+
+function getRegularKeyActionOptions()
+{
+	var outstr = '<option value="none">--Select Action--</option>';
+	for (var thisAction of regularKeyActions) outstr += '<option value="' + thisAction[1] + '">' + htmlencode(thisAction[0]) + '</option>';
+	return outstr;
+}
+
+function setActionParameterUi(event)
+{
+	try {
+		var thisAction = event.target.value;
+		var parameterDest = event.target.parentElement.nextElementSibling;
+		var newHtml = "&nbsp;";  // default is an empty parameter cell
+		switch (thisAction)
+		{
+			case "playChord": newHtml = "<input size=20 /><div style=\"font-size: 75%;\">Enter a chord name such as C, D7, or Dm7.  Add an octave number if you want a different octave, e.g. C4.</div>"; break;
+			case "playDrum": 
+				var drumOptions = '<option value="">--Select Drum--</option>';
+				for (var i = 35; i <= 81; i++) drumOptions += '<option value=' + i + '>' + htmlencode(synth.getTimbreName(1,i)) + '</option>';
+				newHtml = "<select>" + drumOptions + "</select>";
+				break;
+			case "toggleMute":
+			case "setVolume":
+			case "setModulation":
+			case "setPan":
+				newHtml = "<input type=number min=1 max=16 value=1><div style=\"font-size: 75%;\">Select a MIDI channel</div>";
+				break;
+			case "startDrumMachine":
+			case "stopDrumMachine":
+				newHtml = "<input type=number value=1 min=1 max=" + numDrumMachines + "><div style=\"font-size: 75%;\">Select a Drum Machine</div>";
+				break;
+			case "setDrawbars":
+				newHtml = '<input size=15 value="888888888"><div style=\"font-size: 75%;\">Enter drawbar string; pressing this key will automatically select Drawbar Organ instrument</div>';
+				break;
+			case "controlDrawbars":
+				newHtml = '<input size=15 value="11110000"><div style=\"font-size: 75%;\">Use 1 to control a certain drawbar or 0 to have this dial not control that drawbar</div>';
+				break;
+			case "setInstrument":
+				newHtml = "<select>" + getInstrumentOptions(0) + "</select>";
+				break;
+			default: break;
+		}
+		parameterDest.innerHTML = newHtml;
+	} catch (ex1) { }
+}
+
+function addRegularKeyAssignmentRow(event) {
+	var tbody = dg('tbodyRegularKeyAssignments');
+	var outstr = "";
+	outstr += "<td class=trcell><input onchange=\"javascript: reloadRegularKeyAssignments();\" data-pianokeysetter=1 size=20 /><button onclick=\"javascript: delParentRow(event); reloadRegularKeyAssignments();\">Remove</button></td>";
+	outstr += "<td class=trcell><select onchange=\"javascript: setActionParameterUi(event); reloadRegularKeyAssignments();\">" + getRegularKeyActionOptions() + "</select></td>";
+	outstr += "<td class=trcell>&nbsp;</td>";
+	var rowElem = document.createElement("TR");
+	rowElem.innerHTML = outstr;
+	tbody.insertBefore(rowElem,tbody.rows[tbody.rows.length-1]);
+}
+
+function refreshTrackDisplay()
+{
+	var outstr = "";
+	for (var i = 0; i < tracks.length; i++) {
+		outstr += ("<tr>");
+		outstr += ("<td class=trcell>" + (i+1) + "</td>");
+		outstr += ("<td class=trcell>" + (tracks[i].channel+1) + "</td>");
+		outstr += ("<td class=trcell><input onclick=\"loadTrackData(event)\" type=checkbox id=trMute" + i + " " + (tracks[i].mute ? " checked " : "") + "></td>");
+		outstr += ("<td class=trcell><input onclick=\"loadTrackData(event)\" type=radio id=trRecord" + i + " " + "name=trRecordTrack " + ((i==currentTrack) ? " checked " : "") + "></td>");
+		outstr += ("<td class=trcell><select onchange=\"loadTrackData(event)\" id=trInstrument" + i + ">" + getInstrumentOptions(tracks[i].instrument) + "</select></td>");
+		outstr += ("<td class=trcell><select onchange=\"loadTrackData(event)\" id=trAccomp" + i + ">" + getAccompOptions(tracks[i].accomp) + "</select></td>");
+		outstr += ("<td class=trcell><select onchange=\"loadTrackData(event)\" id=trReplay" + i + ">" + getTrackOptions(tracks[i].replay) + "</select></td>");
+		outstr += ("<td class=trcell><input style=\"width: 50px;\" type=\"number\" low=\"-12\" high=\"12\" step=\"1\" value=\"0\" onchange=\"loadTrackData(event)\" id=trOffset" + i + " />" + "</td>");
+		outstr += ("</tr>");
+	}
+	dg("TrackBody").innerHTML = outstr;
+	
+}
+
+//
+//	NEW RECORDING FUNCTIONS
+//
+
+var loopedRecording = [];
+var currentRecording = [];
+var currentPlaybackControl = null;
+
+var onNextNoteDown = null;	// next time a note gets pushed down, this function gets called with (message,fe) where fe is the friendly english version of the midi message
+
+function mainRecordButton()
+{
+	if (currentPlaybackControl) {
+		currentPlaybackControl.stop();
+	}
+	if (currentRecording.length > 0) {
+		if (!confirm("Replace existing recording?")) return;
+		currentRecording = [];
+	}
+	loopedRecording = [];
+	synth.record(currentRecording);
+}
+
+function mainPlayButton()
+{
+	if (currentPlaybackControl && currentPlaybackControl.finished) currentPlaybackControl = null;
+	if (!currentPlaybackControl) {
+		currentPlaybackControl = synth.playback(currentRecording);
+	} else {
+		currentPlaybackControl.togglePause();
+	}
+}
+
+function mainStopButton()
+{
+	if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
+	if (currentPlaybackControl) { currentPlaybackControl.stop(); currentPlaybackControl = null; }
+}
+
+function mainLoopButton()
+{
+	if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
+	else return;
+	if (currentPlaybackControl) { currentPlaybackControl.stop(); currentPlaybackControl = null; }
+	loopedRecording = JSON.parse(JSON.stringify(currentRecording));
+	currentPlaybackControl = synth.playback(loopedRecording);
+	currentPlaybackControl.loop = true;
+	currentTrack++; if (currentTrack > 15) currentTrack = 1;
+	dg("trRecord"+currentTrack).checked = true;
+	onNextNoteDown = function() {
+		currentRecording = [];	// we don't record right away, we record starting the next time a note goes down
+		synth.record(currentRecording);
+	};
+}
+
+//
+//	SAVE/LOAD SETTINGS TO LOCAL STORAGE
+//
+
+function getSettingsObject()
+{
+	var obj = { };
+	obj.masterVol = synth.masterVol;
+	obj.reverbLev = synth.reverbLev;
+	obj.minVelocity = minVelocity;
+	obj.maxVelocity = maxVelocity;
+	obj.quality = synth.quality;
+}
+
+//
+//  DRUM MACHINE
+//  now also provides tonal accompaniment, also with perfect timing!
+//  does about 16 32nd-notes scheduled in advance using the synth's hardware timing feature
+//  for better accuracy
+//  later: swing feature will be added so the timing isn't TOO perfect.
+//
+
+var dmBeat = 0;
+var dmOn = []; for (var mi = 0; mi < numDrumMachines; mi++) { dmOn.push(false); }
+var dmBpmin = 0;
+var dmBpmeasure = 0;
+var nextBeatIn = 0;
+
+var baseCurrentTime = 0;	// when the dm was first started, this is set to the audio context hardware time when it started, and all beats are calculated from that
+var beatCurrentTime = 0;	// currentTime value for the last beat we did
+
+function startDm(machineNumber) {
+    dmOn[machineNumber] = true;
+}
+
+function stopDm(machineNumber) {
+    dmOn[machineNumber] = false;
+}
+
+function getLoopStatus(mi) {
+    try {
+        var loopStatusElem = dg("drumMachineLoop" + mi);
+        if (loopStatusElem) {
+            return loopStatusElem.checked;
+        }
+    } catch(ex1) {  }
+    return true;
+}
+
+function getDmChannel(mi) {
+    try {
+        var channelElem = dg("drumMachineAccompChannel" + mi);
+        if (channelElem) {
+            return parseInt(channelElem.value,10)-1;
+        }
+    } catch(ex1) { }
+    return 0;
+}
+
+function getStopOnStartStatus(mi) {
+    try {
+        var stopStartStatusElem = dg("drumMachineStopOnStart" + mi);
+        if (stopStartStatusElem) {
+            return stopStartStatusElem.checked;
+        }
+    } catch(ex1) {  }
+    return true;
+}
+
+function recalcDmParms() {
+    try { dmBpmin = parseInt(dg("drumMachineBpmin").value,10); } catch(e1) { }
+    try { dmBpmeasure = parseInt(dg("drumMachineBpmeasure").value,10); } catch(e2) { }
+}
+
+var swingPercent = 50;		// similar to real drum machines, 50% swing is straight time
+
+function setSwingPercent(p) {
+	if (p<0) p = 0;
+	if (p>100) p = 100;
+	swingPercent = p;
+}
+
+function getNextBeatIn() {
+    return (1/dmBpmin)*60/8*1000;
+}
+
+function getNextBeatInWithSwing(bi) {
+	// for swing, the odd beats are moved later and the even beats are moved earlier
+	
+}
+
+function moveNextBeat() {
+    recalcDmParms();
+    dmBeat++;
+    if (dmBeat >= 8*dmBpmeasure) {
+        // end of measure: go to start and turn off non-looped machines
+        dmBeat = 0;
+        for (var mi = 0; mi < numDrumMachines; mi++) {
+            try {
+                var loopStatusElem = dg("drumMachineLoop" + mi);
+                if (loopStatusElem) {
+                    var loopStatus = loopStatusElem.checked;
+                    if (!loopStatus) { dmOn[mi] = false; }
+                }
+            } catch(ex1) { }
+        }
+    }
+    nextBeatIn = getNextBeatIn();     // ms until next minor beat
+	beatCurrentTime += (nextBeatIn / 1000);
+}
+
+function holdNote(channel, noteNum, velocity, duration, startTime)
+{   // Holds a note and remembers its note number for the given # of milliseconds, then turns off
+    // the note.  This is good to call so that if accompaniment keys change, the old notes are
+    // still turned off.  This is asynchronous and does not block, obviously.
+	// If you send a start time you can schedule in advance, for hardware-level timing accuracy
+	if (!startTime) startTime = synth.currentTime();
+    var noteOnByte = (0x90 | (channel & 0x0F));
+    var noteOffByte = (0x80 | (channel & 0x0F));
+    synth.send([noteOnByte, noteNum, velocity], startTime);
+	synth.send([noteOffByte, noteNum, velocity],startTime+(duration/1000));
+}
+
+function getNoteDuration(thisDrum, mi)
+{   // Gets the duration in ms for the given note, by searching for the next checkbox after the
+    // current beat, which indicates when the note should end (a little before the end of that beat).
+    // Result: maximum note resolution of the auto-accompaniment drum machine is 16th notes for
+    // tonal notes, 32nd for percussion.
+    var lastBeat = dmBeat;
+    try {
+        for (var bi = dmBeat + 1; bi < 32; bi++) {
+            var playBeatElem = dg("DrumBeat" + thisDrum + "_" + bi + "_" + mi);
+            if (playBeatElem) {
+                if (playBeatElem.hasAttribute("isChecked")) { lastBeat = bi; break; }
+            }
+        }
+    } catch (ex1) { }
+    var numBeats = lastBeat - dmBeat + 1;
+    if (numBeats < 1) numBeats = 1;
+    if (numBeats > 32) numBeats = 32;
+    var msPerBeat = getNextBeatIn();
+    return msPerBeat * (numBeats - 0.25);   // 1/4 of a tick so the notes sound separated if they're fast
+}
+
+function setDrumBeat(event)
+{	// we use just table-cells now, not input checkboxes, for the drum machine to make it load faster
+	try {
+		if (!event.target.hasAttribute("isChecked")) {
+			event.target.setAttribute("isChecked","1");
+			event.target.style.backgroundColor = "blue";
+		} else {
+			event.target.removeAttribute("isChecked");
+			event.target.style.backgroundColor = "white";
+		}
+	} catch(ex1) { }
+}
+
+function isOnBeat(thisDrum, mi, beatNumber)
+{   // for a melody drumbeat, returns if the current beat is the note-on signal and not the note-off signal
+    try {
+        var numBeats = 0;
+        for (var bi = 0; bi <= beatNumber ; bi++) {
+            var playBeatElem = dg("DrumBeat" + thisDrum + "_" + bi + "_" + mi);
+            if (playBeatElem) {
+                if (playBeatElem.hasAttribute("isChecked")) { numBeats++; }
+            }
+        }
+        if (numBeats % 2 == 1) return true;
+        return false;
+    } catch (ex1) { }
+    return false;
+}
+
+var beatsToSchedule = 8;
+
+function setBeatsToSchedule(n) {	// linked to the less-jitter/fast-changes slider on the drum machine
+	beatsToSchedule = n;
+}
+
+function dmAddChoices() {
+	for (var i = 0; i < numDrumMachines; i++) {
+		var outstr = "";
+		outstr += ('<option value="">--Select instrument/note to add--</option>');
+		for (var thisDrumChoice of drumChoiceBlock) {
+			if (thisDrumChoice==0) continue;
+			outstr += ('<option value=' + thisDrumChoice +'>' + getDrumMachineItemName(thisDrumChoice) + '</option>');
+		}
+		dg('DrumAddSelect_' + i).innerHTML = outstr;
+	}
+}
+
+function dmMinorBeatTimer() {
+    // actually handles the timing and playing for the drum machine
+    try {
+		var beatsToSchedule = 8;	// warning: scheduling more beats in advance causes accompaniment note changes to take longer to change after you press them, but scheduling too few can result in jitter
+		if (!baseCurrentTime) baseCurrentTime = synth.currentTime();
+		if (!beatCurrentTime) beatCurrentTime = synth.currentTime();
+		recalcDmParms();
+		var maxScheduledTime = synth.currentTime() + (beatsToSchedule * getNextBeatIn())/1000;	// since scheduled processing overlaps to ensure consistent timing despite setTimeout jitters, we might get ahead of ourselves and need to stop scheduling more notes.
+		for (var iSchedBeats = 0; iSchedBeats < beatsToSchedule; iSchedBeats++)
+		{
+			if (beatCurrentTime > maxScheduledTime) break;	// don't schedule too far ahead
+			for (var thisDrum of drumChoiceBlock) {
+				if (thisDrum==0) continue;
+				for (var mi = 0; mi < numDrumMachines; mi++) {
+				if (!dmOn[mi]) continue;
+				var velocity = 127;
+				try { velocity = parseInt(dg("drumMachineVolume" + mi).value,10); } catch (dmvex1) { }
+				var channel = getDmChannel(mi);
+				try {
+					var playBeatElem = dg("DrumBeat" + thisDrum + "_" + dmBeat + "_" + mi);
+					if (playBeatElem) {
+					if (playBeatElem.hasAttribute("isChecked")) {
+						if (((thisDrum & 0x80) > 0) && isOnBeat(thisDrum, mi, dmBeat)) {
+						// regular instruments
+							var noteNumber = thisDrum & 0x7F;
+							holdNote(channel, noteNumber, velocity, getNoteDuration(thisDrum, mi), beatCurrentTime);
+						} else {
+						// drums
+							holdNote(9, thisDrum, velocity, 50, beatCurrentTime);
+						}
+					}
+					}
+				} catch(ex2) { }
+				}
+			}
+			moveNextBeat();
+		}
+    } catch(ex1) { }
+    var currentBeatText = "Major: " + (1+Math.floor(dmBeat/8)) + " Minor: " + (1+(dmBeat % 8));
+    dg("currentBeat").textContent = currentBeatText;
+	var nextCall = nextBeatIn * (beatsToSchedule/2);
+	if (nextCall > 500) nextCall = 500;
+    setTimeout(dmMinorBeatTimer, nextBeatIn*(beatsToSchedule/2));	// we schedule to come back in half the time that we had scheduled, to try scheduling out some more, keeping in mind the lack of accuracy for setTimeout which is the reason we want overlap
+}
+
+</SCRIPT>
+</HEAD>
+<BODY ONLOAD="onLoadFunction()">
+<div>
+<span style="font-weight: bold; font-size: 14pt;">Musical Playground</span>
+</div>
+<div style="width: 100%;" id="Panel:Start">
+	<button onclick="userInitiatedAudioStart()">Start</button><br/><i>(You must click Start to begin, so that Chrome knows you give permission to use MIDI devices.)</i><br/>
+</div>
+<div style="width: 100%; display: none;" id="Panel:Main">
+	Instrument Loaded Status: <span id="inststatus">Not Loaded</span><br>
+	<table style="width: 100%; " class="maintabtable">
+		<colgroup>
+			<col style="width: 100%;">
+		</colgroup>
+		<thead>
+			<tr>
+				<td class="tabbottomborder">
+					<div style="text-align: left; background-color: white;" data-tab-panelcontainer="pg_panelcontainer" id="tabContainer">
+						<a href="#" data-tabname="KeyboardDrums" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Keyboard and Drums</a>
+						<a href="#" data-tabname="Main" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Main Settings</a>
+						<a href="#" data-tabname="Tracks" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Tracks</a>
+						<a href="#" data-tabname="DrumMachine" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drum and Accomp Machine</a>
+						<a href="#" data-tabname="Drawbars" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drawbars</a>
+						<a href="#" data-tabname="MIDIPlayback" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI File Playback</a>
+						<a href="#" data-tabname="MIDISetup" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI Setup</a>
+						<a href="#" data-tabname="KeyAssignments" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Key Assignments</a>
+					</div>
+				</td>
+			</tr>
+		</thead>
+		<tbody id="pg_panelcontainer">
+			<tr data-tabname="KeyboardDrums" data-tab-panel-selected="0">
+				<td>
+					<span style="float: right;">
+						<button class=bigButton onclick="mainPlayButton()">&#x23ef;<div style="font-size: 8pt;"><span id=playSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="playSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Play</div></button>&nbsp;
+						<button class=bigButton onclick="mainRecordButton()">&#x23fa;<div style="font-size: 8pt;"><span id=recordSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="recordSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Record</div></button>&nbsp;
+						<button class=bigButton onclick="mainStopButton()">&#x23f9;<div style="font-size: 8pt;"><br>Stop</div></button>&nbsp;
+						<button class=bigButton onpointerdown="mainLoopButton()">&#x1f501;<div style="font-size: 8pt;">Loop Back,<br>Record Next Track</div></button>
+					</span>
+					<div id="divMidiEvents" style="float: left; border: thin solid black; overflow: hidden; font-weight: normal; font-size: 10pt; height: 65pt; width: calc(100vw - 280pt);">
+						MIDI Events Appear Here
+					</div>
+                	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tskeyboard></div>
+                	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums></div>
+                	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums2></div>
+				</td>
+			</tr>
+			<tr data-tabname="Main" data-tab-panel-selected="0">
+				<td>
+					MasterVol<br/>
+					<input type="range" value="50" min="0" max="100" oninput="synth.setMasterVol(this.value/100)"/><br/>
+					ReverbLev<br/>
+					<input type="range" value="50" min="0" max="100" oninput="synth.setReverbLev(this.value/100)"/><br/>
+					MinVelocity<br/>
+					<input type="range" value="50" min="0" max="127" oninput="minVelocity=this.value"/><br/>
+					MaxVelocity<br/>
+					<input type="range" value="127" min="0" max="127" oninput="maxVelocity=this.value"/><br/>
+					Quality : <select onchange="synth.setQuality(this.selectedIndex)"><option>Quality=0</option><option>Quality=1</option><option selected>Quality=2</option></select>
+					<br/>
+				</td>
+			</tr>
+    		<tr data-tabname="DrumMachine" data-tab-panel-selected="0">
+    		    <td>
+		            <span style="display:inline-block; width: 140px;">Beats Per Minute:</span><input id=drumMachineBpmin oninput="dg('drumMachineBpminNumber').textContent = event.target.value;" type=range min=60 max=200 value=120> <span id=drumMachineBpminNumber>120</span><br/>
+		            <span style="display:inline-block; width: 140px;">Beats Per Measure:</span><input id=drumMachineBpmeasure type=number min=1 max=32 value=4>
+		            Current Beat: <span id=currentBeat></span><br/>
+					<span style="display:inline-block; width: 140px;">Quality:</span>Faster Changes <input type=range min=4 max=32 value=8 id=dmQuality onchange="setBeatsToSchedule(parseInt(event.target.value,10));"> Less Jitter<br/>
+    		        <script type="text/javascript">
+    		        for (var mi = 0; mi < numDrumMachines; mi++) {
+    		            document.write("<br/><br/><b>Machine " + (mi+1) + "</b><br/>");
+    		            var dmhead = ""
+        		            + "<button onclick=\"startDm(" + mi + ")\">Start Now</button>"
+        		            + "<button onclick=\"stopDm(" + mi + ")\">Stop Now</button><br/>"
+        		            + "Accomp Channel: <input id=drumMachineAccompChannel_mi_ type=number min=1 max=16> "
+        		            + "Accomp <select id=drumMachineAccomp_mi_>" + getAccompOptions() + "</select><br/>"
+        		            + "Loop?: <input type=checkbox id=drumMachineLoop_mi_ checked> "
+        		            + "Stop When Others Start?: <input id=drumMachineStopOnStart_mi_ type=checkbox checked> "
+				    + "Volume: <input type=range min=0 max=127 step=1 value=127 id=drumMachineVolume_mi_>";
+    		            document.write(dmhead.replace(/[_]mi[_]/gi,mi));
+    		            document.write(
+                            '<table style="border-collapse: collapse;">'
+        		            +'<thead><tr>'
+    		                +'<td class=trhcell>&nbsp;</td>');
+		                var numBeatCols = 32;
+		                for (var bi = 0; bi < numBeatCols; bi++) {
+		                    var classes = "trhcell beatnumber";
+		                    if (bi % 8 == 7) classes += " quarterbeat";
+		                    else if (bi % 4 == 3) classes += " eigthbeat";
+		                    document.write("<td class=\"" + classes + "\">" + (bi+1) + "</td>" );
+		                }
+    		            document.write('</tr></thead><tbody id=DrumTbody' + mi + ' >');
+						document.write('<tr><td class=trcell colspan=' + (numBeatCols+1) + '>');
+						document.write('<select id=DrumAddSelect_' + mi + '>');
+						/* choices must be added later since they depend on the synth being started */
+						document.write('</select>');
+						document.write('<button id=DrumAdd_' + mi + ' data-dm=' + mi + ' onclick="javascript: addDrumLine(event);">Add</button>');
+						document.write('</td></tr>');
+	                    document.write('</tbody></table>');
+    		        }
+    		        </script>
+    		    </td>
+    		</tr>
+			<tr data-tabname="Tracks" data-tab-panel-selected="0">
+				<td>
+					<table style="border-collapse: collapse;">
+						<thead>
+							<tr>
+								<td class=trhcell>Track</td>
+								<td class=trhcell>MIDI Channel</td>
+								<td class=trhcell>Mute</td>
+								<td class=trhcell>Current</td>
+								<td class=trhcell>Instrument</td>
+								<td class=trhcell>Accomp</td>
+								<td class=trhcell>Play Same as Channel #</td>
+								<td class=trhcell>Offset</td>
+							</tr>
+						</thead>
+						<tbody id="TrackBody">
+						</tbody>
+					</table>
+				</td>
+			</tr>
+			<tr data-tabname="Drawbars" data-tab-panel-selected="0">
+				<td>
+					<div id="drawbarbutton">
+						<button onclick="enableDrawbar()">Enable Custom Drawbar Organ Sound</button>
+					</div>
+					<div style="display:none" id=drawbarstuff>
+						<table>
+							<tr>
+								<td class="control-cell">
+									Drawbars:<br>
+									<div id=drawbars class="control-container"></div>
+								</td>
+								<td class="control-cell">
+									Envelope:
+									<div id=envelope class="control-container"></div>
+								</td>
+								<td class="control-cell">
+									General Controls:
+									<div id=generalcontrols class="control-container"></div>
+								</td>
+							</tr>
+						</table>
+					</div>
+				</td>
+			</tr>
+			<tr data-tabname="MIDIPlayback" data-tab-panel-selected="0">
+				<td>
+					Load MIDI file from local : <input type="file" onchange="loadMidi(this.files)"/><br/>
+					Loop : <input type="checkbox" onchange="synth.setLoop(this.checked)"/><br/>
+					<button onclick="playMidi()">Play</button>
+					<button onclick="stopMidi()">Stop</button>
+					<div id="status"></div>
+				</td>
+			</tr>
+			<tr data-tabname="MIDISetup" data-tab-panel-selected="0">
+				<td>
+					<table><tr>
+						<td class="control-cell">Inputs:
+							<div id=midiinputs></div>
+						</td>
+						<td class="control-cell">Outputs:
+							<div id=midioutputs></div>
+						</td>
+					</tr></table>
+					<a href="#" onclick="javascript: refreshMidiDevices();">Refresh Midi Devices</a>
+				</td>
+			</tr>
+			<tr data-tabname="KeyAssignments" data-tab-panel-selected="0">
+				<td>
+					<h4>Regular Key Assignments</h4>
+					<table style="border-collapse: collapse;" id=tableRegularKeyAssignments>
+						<thead>
+							<tr>
+								<td class="trhcell" style="vertical-align: top;">Piano Key, Pedal or Dial<br><span style="font-size: 75%">(Click in box then press key)</span></td>
+								<td class="trhcell" style="vertical-align: top;">Action</td>
+								<td class="trhcell" style="vertical-align: top;">Parameter</td>
+							</tr>
+						</thead>
+						<tbody id=tbodyRegularKeyAssignments>
+							<tr>
+								<td colspan=3 class="trcell"><button onclick="addRegularKeyAssignmentRow(event)">Add</button></td>
+							</tr>
+						</tbody>
+					</table>
+					<h4>Custom Key Assignment Javascript</h4>
+					<textarea id="txtAreaNoteCode" style="width: calc(100vw - 25pt); height: calc(100vh - 130pt);" onchange="updateNoteFunction(event);">
+					</textarea>
+				</td>
+			</tr>
+		</tbody>
+	</table>
+</div>
+</BODY>
+</HTML>
