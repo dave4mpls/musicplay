@@ -823,6 +823,7 @@ function setKbdKeys()
 {
 	var kbdOffset = 0;
 	var playKeys = true;
+	var alreadyDownArray = {};
 	var noteKeys = {
 		"Digit1": 59,
 		"KeyQ": 60, "Digit2": 61, "KeyW": 62, "Digit3": 63, "KeyE": 64,
@@ -843,6 +844,17 @@ function setKbdKeys()
 	var keyEvent = function(ud,e) {
 		if (e.code=="Escape" && ud=="down") { playKeys = !playKeys; e.preventDefault(); return; }
 		else if (playKeys) {
+			if (ud=="down") {
+				// Some keyboards don't set e.repeat but we still don't want to repeat the notes when keys are held
+				if (alreadyDownArray[e.code]) return;
+				alreadyDownArray[e.code] = true;
+			}
+			if (ud=="up") {
+				// maintain the already down array properly for the debouncing feature above
+				if (alreadyDownArray[e.code]) {
+					delete alreadyDownArray[e.code];
+				}
+			}
 			if (ud=="down") {
 				if (e.code=="Comma") { kbdOffset-=12; e.preventDefault(); return; }
 				if (e.code=="Period") { kbdOffset+=12; e.preventDefault(); return; }
