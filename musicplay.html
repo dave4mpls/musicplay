@@ -3,6 +3,14 @@
 <HEAD>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- iOS meta tags -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Musical Playground">
+<link rel="apple-touch-icon" href="iealogo152.png">
+<meta name="description" content="Musical Playground">
+<meta name="theme-color" content="#add8e6" />
+
 <TITLE>Musical Playground</TITLE>
     <link rel="manifest" href="sitemanifest.json">
     <link rel="apple-touch-icon" href="logoSquare.png">
@@ -128,6 +136,19 @@
 <SCRIPT TYPE="text/javascript" LANGUAGE="javascript" SRC="pianokeys.js"></SCRIPT>
 <SCRIPT TYPE="text/javascript" LANGUAGE="javascript" SRC="tinysynth.js"></SCRIPT><!-- not needed for drawbar synth  - but testing none the less -->
 <script src="install.js"></script>
+    <script type="text/javascript" language="JavaScript">
+        //--- Register the service worker, needed for a Progressive Web App
+        var serviceWorkerReg = null;
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then((reg) => {
+                        // service worker registered
+                        serviceWorkerReg = reg;
+                    });
+            });
+        }
+    </script>
 <SCRIPT TYPE="text/javascript" LANGUAGE="javascript">
 function el(x) { return document.getElementById(x); }
 
