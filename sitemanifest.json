@@ -1,0 +1,25 @@
+{
+    "icons": [{
+        "src": "/favicon.png",
+        "sizes": "64x64",
+        "type": "image/png"
+    }, {
+        "src": "/mplogo192.png",
+        "sizes": "192x192",
+        "type": "image/png"
+    }, {
+        "src": "/mplogo152.png",
+        "sizes": "152x152",
+        "type": "image/png"
+    }, {
+        "src": "/mplogo512.png",
+        "sizes": "512x512",
+        "type": "image/png"
+    }],
+  "start_url": "musicplay.html",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#add8e6",
+  "name": "Musical Playground",
+  "short_name": "Musical Playground"
+}
