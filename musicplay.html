@@ -137,6 +137,8 @@
 <SCRIPT TYPE="text/javascript" LANGUAGE="javascript" SRC="tinysynth.js"></SCRIPT><!-- not needed for drawbar synth  - but testing none the less -->
 <script src="install.js"></script>
     <script type="text/javascript" language="JavaScript">
+"use strict";
+
         //--- Register the service worker, needed for a Progressive Web App
         var serviceWorkerReg = null;
         if ('serviceWorker' in navigator) {
@@ -148,11 +150,30 @@
                     });
             });
         }
-    </script>
-<SCRIPT TYPE="text/javascript" LANGUAGE="javascript">
+	displayCurrentVersion();
+
 function el(x) { return document.getElementById(x); }
 
-"use strict";
+function updateVersion()
+{
+   if (serviceWorkerReg) {
+	serviceWorkerReg.update().then(function() {
+	    location.reload();
+	});
+    } else {
+	location.reload();  // if service worker not registered somehow, just reload
+    }
+}
+
+function displayCurrentVersion()
+{
+        try {
+            window.caches.keys().then(function (x)
+            {   // Display the version number, as found from our Service Worker.
+                if (x.length > 0) dg(":Version").textContent = x[0];
+            });
+        } catch(wckerr) {}
+}
 
 function selectTab(thisParent, thisElemTabName) {
 	// select any given tab within a parent element that contains tabs as its direct children
@@ -1602,6 +1623,9 @@ function dmMinorBeatTimer() {
 </div>
 <div style="width: 100%;" id="Panel:Start">
 	<button onclick="userInitiatedAudioStart()">Start</button><br/><i>(You must click Start to begin, so that Chrome knows you give permission to use MIDI devices.)</i><br/>
+	Version: <span id=":Version"></span><br/><br/>
+	<button onclick="updateVersion()">Update Musical Playground</button> <i>(may have to click up to 5 times)</i><br/>
+	<button style="display:none" id="butInstall">Install as App</button>
 </div>
 <div style="width: 100%; display: none;" id="Panel:Main">
 	Instrument Loaded Status: <span id="inststatus">Not Loaded</span><br>
