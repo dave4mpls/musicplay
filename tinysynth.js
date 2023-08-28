@@ -2272,6 +2272,19 @@ function WebAudioTinySynth(opt){
 		}
 		return outstr;
 	},
+	//------ DW: Code for determining things about chords to help with auto accompaniment
+	getChordTypes: function() {
+		return [
+			{type:"M",notes:[0,4,7],scale:"M"},
+			{type:"m",notes:[0,3,7],scale:"m"},
+		];
+	},
+	getScaleTypes: function() {
+		return [
+			{type:"M",notes:[0,2,4,5,7,9,11]},
+			{type:"m",notes:[0,2,3,5,7,8,10]},
+		];
+	},
     //------ DW: Code from my MIDI Access Module expands the tiny synth to 
     //------ automatically be able to handle incoming and outgoing MIDI messages
     //------ intended for multiple sources/destinations.

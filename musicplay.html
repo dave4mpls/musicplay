@@ -615,44 +615,68 @@ function updateFriendlyData(fe) {
 	return fe;
 }
 
-var defaultNoteFunction = 
-	"var process = function(n) { \r\n"
-	+ "\t// Process a MIDI event or note as it comes in, to add custom functionality.\r\n"
-	+ "\t// n contains these fields:\r\n"
-	+ "\t// n.data - the original MIDI data as a byte array\r\n"
-	+ "\t// n.device - the device that sent it: 'internal:main' for onscreen keyboard,\r\n"
-	+ "\t//   or 'internal:accomp' for onscreen accompaniment, \r\n"
-	+ "\t//   or 'internal:drums' for onscreen drums, \r\n"
-	+ "\t//   or manufacturer:name for a real device\r\n"
-	+ "\t// n.time - current time in seconds\r\n"
-	+ "\t// n.channel - MIDI channel 0-15 (9 is drums)\r\n"
-	+ "\t// n.command - MIDI command e.g. noteOn, noteOff, afterTouch, patch, controller, channelPressure, pitchBend\r\n"
-	+ "\t// n.note - MIDI note number\r\n"
-	+ "\t// n.velocity - MIDI note velocity (volume)\r\n"
-	+ "\t// n.accomp - true if this should be played as an accompaniment note\r\n"
-	+ "\t// n.musicalCommand - true for musical commands like note on, note off, program change, etc.\r\n"
-	+ "\t// To send your note on to the next stage, use\r\n"
-	+ "\t// play(n)   { to clone your note, use clone(n) }\r\n"
-	+ "\t// Change n.time if you want to delay your note's playback.\r\n"
-	+ "\t// Other functions you can call:\r\n"
-	+ "\t//  loopSame() : loops the recording on the same channel\r\n"
-	+ "\t//  loopNext() : loops the recording and goes to the next channel\r\n"
-	+ "\t//  currentChannel() : gets the current recording channel\r\n"
-	+ "\t//  \r\n"
-	+ "\t// Shift channel to channel we are recording on, except for drums\r\n"
-	+ "\tif (n.musicalCommand && n.channel != 9) n.channel = currentChannel();\r\n"
-	+ "\t// Minimum velocity to help with sticky touch sensitive keys\r\n"
-	+ "\tif (n.command=='noteOn' && n.velocity < minVelocity) n.velocity = minVelocity;\r\n"
-	+ "\tif (n.command=='noteOn' && n.velocity > maxVelocity) n.velocity = maxVelocity;\r\n"
-	+ "\t// Example of assigning range of accompaniment keys on a particular device\r\n"
-	+ "\tif (n.device.includes('AKAI') && (n.command=='noteOn'||n.command=='noteOff') && n.note >= 16 && n.note <= 25) n.accomp = true;\r\n"
-	+ "\tplay(n);\r\n"
-	+ "\tfor (var i = 0; i < tracks.length; i++) {\r\n"
-	+ "\t\tif (tracks[i].replay===n.channel) {\r\n"
-	+ "\t\t\tlet n2 = clone(n); n2.channel = tracks[i].channel; n2.note += tracks[i].offset; play(n2);\r\n"
-	+ "\t\t}\r\n"
-	+ "\t}\r\n"
-	+ "}";
+function defaultProcess(n) {
+	// Process a MIDI event or note as it comes in, to add custom functionality.    
+	// n contains these fields:    
+	// n.data - the original MIDI data as a byte array    
+	// n.device - the device that sent it: 'internal:main' for onscreen keyboard,    
+	//   or 'internal:accomp' for onscreen accompaniment,     
+	//   or 'internal:drums' for onscreen drums,     
+	//   or manufacturer:name for a real device    
+	// n.time - current time in seconds    
+	// n.channel - MIDI channel 0-15 (9 is drums)    
+	// n.command - MIDI command e.g. noteOn, noteOff, afterTouch, patch, controller, channelPressure, pitchBend    
+	// n.note - MIDI note number    
+	// n.velocity - MIDI note velocity (volume)    
+	// n.accomp - true if this should be played as an accompaniment note    
+	// n.musicalCommand - true for musical commands like note on, note off, program change, etc.    
+	// To send your note on to the next stage, use    
+	// play(n)   { to clone your note, use clone(n) }    
+	// Change n.time if you want to delay your note's playback.    
+	// Other functions you can call: 
+	//  mainLoopButton(): loop back record next track
+	//  mainStopButton(): stop recording
+	//  mainRecordButton(): start recording
+	//      
+	// Shift channel to channel we are recording on, except for drums    
+	if (n.musicalCommand && n.channel != 9) n.channel = currentChannel();    
+	// Minimum velocity to help with sticky touch sensitive keys    
+	if (n.command=='noteOn' && n.velocity < minVelocity) n.velocity = minVelocity;    
+	if (n.command=='noteOn' && n.velocity > maxVelocity) n.velocity = maxVelocity;    
+	// All set up for AKAI:    
+	if (n.device.includes('AKAI')) {
+		if (n.command=='noteOn'||n.command=='noteOff') {
+			if (n.note >= 16 && n.note <= 20) {
+				// drums, bank a
+				var akaiDrums = [DRUM_BASS, DRUM_TOM_FLOOR_LOW, DRUM_TOM_FLOOR_HIGH, DRUM_CYMBAL_CRASH,
+					DRUM_HI_HAT_CLOSED];
+				n.note = akaiDrums[n.note-16];
+				n.channel = 9;
+			}
+			else if (n.note == 23) {
+				// top right drum button: loop next
+				if (n.command=='noteOn') mainLoopButton();
+				return;
+			}
+			else if (n.note == 22) {
+				if (n.command=='noteOn') mainStopButton();
+				return;
+			}
+			else if (n.note == 21) {
+				if (n.command=='noteOn') mainRecordButton(true);
+				return;
+			}
+		}
+	}
+	play(n);    
+	for (var i = 0; i < tracks.length; i++) {    
+		if (tracks[i].replay===n.channel) {    
+			let n2 = clone(n); n2.channel = tracks[i].channel; n2.note += tracks[i].offset; play(n2);    
+		}    
+	}    
+}
+
+var defaultNoteFunction = defaultProcess.toString().replace(/function defaultProcess[(]n[)]/, "var process = function(n)");
 
 var currentNoteFunction = defaultNoteFunction;
 
@@ -704,83 +728,6 @@ function notePostProcessing(fe) {
 	else
 		synth.send(fe.data,fe.time);  // delayed send
 }
-
-/* former code for handling keys from before:
-
-	var timeDiff = 0;
-	if (debugmsg) { console.log(makeFriendlyMidiEvent(message)); }
-	// this if statement applies to all MIDI messages that play things to a channel
-	var cmdcode = (message.data[0] & 0xF0);
-	if (cmdcode >= 0x80 && cmdcode <= 0xE0) {
-		// fix the channel to match the track we are recording (only for MIDI messages 8-E meaning note off, note on, program change, pitch bend, etc.)
-		message.data[0] = (message.data[0] & 0xF0) + tracks[currentTrack].channel;
-		// preprocess the key: for example, minimum velocity that adjusts keyboards that are too sensitive
-		// (only for note on and note off)
-		if (cmdcode >= 0x80 && cmdcode <= 0x9F) {
-			if (message.data[2] < minVelocity) message.data[2] = minVelocity;
-			if (message.data[2] > maxVelocity) message.data[2] = maxVelocity;
-		}
-		// record the key into our track
-		if (recordingNow && !((cmdcode == 0x80 || cmdcode == 0x90) && (message.data[1] >= repeatKey && message.data[1] <= repeatKey + 1)))
-		{
-			timeDiff = 0;
-			if (tracks[currentTrack].messages.length == 0) {
-				var n = currentTime();
-				tracks[currentTrack].lastTime = n;
-				if (currentTrack > 0 && tracks[currentTrack-1].messages.length > 0 && tracks[currentTrack-1].playing && tracks[currentTrack-1].lastLoopTime)
-				{	// If we're layering on top of a previous track, we mark the start time of this track as actually being when the previous track's loop started, so that
-					// we have the right amount of silence.
-					timeDiff = n - tracks[currentTrack-1].lastLoopTime;
-				}
-				tracks[currentTrack].startTime = tracks[currentTrack].lastTime - timeDiff;	// start time is essential to figuring out the length of the track, and rounding it to a multiple of previous tracks for proper alignment...
-			} else {
-				var n = currentTime();
-				timeDiff = n - tracks[currentTrack].lastTime;
-				tracks[currentTrack].lastTime = n;
-			}
-			tracks[currentTrack].messages.push({ waitTime: timeDiff, data: message.data});
-		}
-	}
-	// now, specific types of midi messages are processed here
-	if ((message.data[0] & 0xF0) == 0x90) {	// note on
-		// handle special keys
-		if (message.data[1] == repeatKey) {	// special case: the repeat key was pressed
-			tracks[currentTrack].endTime = currentTime();
-			tracks[currentTrack].loopLength = tracks[currentTrack].endTime - tracks[currentTrack].startTime;
-			// we now have the exact loop length-- but we want it to be a rounded integer multiple of the previous track, if one was recorded, so the tracks sync.
-			if (currentTrack > 0 && tracks[currentTrack-1].messages.length > 0) {
-				var prevLength = tracks[currentTrack-1].loopLength;
-				var thisLength = tracks[currentTrack].loopLength;
-				var recip = false;
-				var ratio = thisLength / prevLength;
-				if (ratio < 0.6) { recip = true; ratio = 1 / ratio; }	// if the user is doing half of the beats in this track as the previous, we detect that and do a reciprocal.  But if they are doing say 0.9 or something, they probably just were trying to match the exact number of beats and came up short.
-				ratio = Math.round(ratio); if (recip) { ratio = 1 / ratio; }
-				var newLength = prevLength * ratio;
-				tracks[currentTrack].loopLength = newLength;
-			}
-			// now we actually loop the track
-			loopTrack(currentTrack);
-			currentTrack++;
-			return;
-		}
-		if (message.data[1] == repeatKey+1) {	// special case: key to the right of the repeat key (1/2step up) is the Stop key
-			stopAllTracks();
-			return;
-		}
-		// send the message to play the note
-		synth.send(message.data);
-	}
-	else if ((message.data[0] & 0xF0) == 0x80) { // note off
-		// handle note-offs for special keys -- generally they just don't sound
-		if (message.data[1] == repeatKey) return;
-		if (message.data[1] == repeatKey+1) return;  // repeatkey + 1 is stop key
-		// otherwise it's a regular note off which we just send
-		synth.send(message.data);
-	}
-	else {
-		synth.send(message.data);
-	}
-*/
 
 var currentRecordSliderLevel = 0;
 
@@ -1318,14 +1265,17 @@ var currentRecordingLength = 0;		// set to 0 when recording is empty, otherwise 
 
 var onNextNoteDown = null;	// next time a note gets pushed down, this function gets called with (message,fe) where fe is the friendly english version of the midi message
 
-function mainRecordButton()
+function mainRecordButton(noOverwritePrompt)
 {
+	if (noOverwritePrompt==undefined) noOverwritePrompt = false;
 	onNextNoteDown = function(){};
 	if (currentPlaybackControl) {
 		currentPlaybackControl.stop();
 	}
 	if (currentRecording.length > 0) {
-		if (!confirm("Replace existing recording?")) return;
+		if (!noOverwritePrompt) {
+			if (!confirm("Replace existing recording?")) return;
+		}
 		currentRecording = [];
 	}
 	currentRecordingLength = 0;
