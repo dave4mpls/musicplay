@@ -22,6 +22,7 @@
 	"purpose": "any maskable"
     }],
   "start_url": "musicplay.html",
+  "id": "musicplay.html",
   "display": "standalone",
   "background_color": "#FFFFFF",
   "theme_color": "#add8e6",
