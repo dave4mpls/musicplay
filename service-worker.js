@@ -13,24 +13,24 @@
 // DW 10/16/2020: Changing this causes all ServiceWorker caches to refresh, and ALSO is linked to
 // the automatic Field Portal Web Version software update code in the client and the server.  So just
 // change this build number and everything will auto-update!
-const CACHE_NAME = '08-27-2023 Build 15';
+const CACHE_NAME = '08-27-2023 Build 16';
 
 // CODELAB: Add list of files to cache here.
 const FILES_TO_CACHE = [
     /*
      *  ALL FILES USED IN THE OFFLINE PWA MUST BE LISTED HERE.
      */
-     "/drawbars.css",
-     "/musicplay.html",
-     "/pianokeys.css",
-     "/pianokeys.js",
-     "/service-worker.js",
-     "/tinysynth.js" 
+     "drawbars.css",
+     "musicplay.html",
+     "pianokeys.css",
+     "pianokeys.js",
+     "service-worker.js",
+     "tinysynth.js" 
      ];
 // we don't manually list the soundfont files, Javascript can figure it out for us!
 for (var i = 1; i <= 129; i++) {
-    FILES_TO_CACHE.push("/bsoundfonts/SF_" + i + ".BIN");
-    FILES_TO_CACHE.push("/bsoundfonts/SFOGG_" + i + ".BIN");
+    FILES_TO_CACHE.push("bsoundfonts/SF_" + i + ".BIN");
+    FILES_TO_CACHE.push("bsoundfonts/SFOGG_" + i + ".BIN");
 }
 
 self.addEventListener('install', (evt) => {
