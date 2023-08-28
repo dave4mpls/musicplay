@@ -137,8 +137,6 @@
 <SCRIPT TYPE="text/javascript" LANGUAGE="javascript" SRC="tinysynth.js"></SCRIPT><!-- not needed for drawbar synth  - but testing none the less -->
 <script src="install.js"></script>
     <script type="text/javascript" language="JavaScript">
-"use strict";
-
         //--- Register the service worker, needed for a Progressive Web App
         var serviceWorkerReg = null;
         if ('serviceWorker' in navigator) {
@@ -150,7 +148,10 @@
                     });
             });
         }
-	displayCurrentVersion();
+</script>
+<script type="text/javascript" language="JavaScript">
+
+displayCurrentVersion();
 
 function el(x) { return document.getElementById(x); }
 
@@ -678,7 +679,10 @@ function processNote(e, noteFunctionText) {
 	try {
 		eval(currentNoteFunction);
 		process(fe);
-	} catch(ex1) { }
+	} catch(ex1) { 
+	        console.log("Exception playing note:");
+		console.log(ex1);
+	}
 }
 
 function updateNoteFunction(e) {
