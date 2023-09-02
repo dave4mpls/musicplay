@@ -27,6 +27,6 @@
   "background_color": "#FFFFFF",
   "theme_color": "#add8e6",
   "name": "Musical Playground",
-  "orientation": ""natural",
+  "orientation": "natural",
   "short_name": "Musical Playground"
 }

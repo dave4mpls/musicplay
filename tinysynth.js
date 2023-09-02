@@ -756,7 +756,7 @@ function WebAudioTinySynth(opt){
         this.pg[i]=0; this.vol[i]=3*100*100/(127*127);
         this.bend[i]=0; this.brange[i]=0x100;
         this.rhythm[i]=0;
-	this.mute[i]=0;
+		this.mute[i]=0;
       }
       this.rhythm[9]=1;
       /**/
@@ -2277,13 +2277,169 @@ function WebAudioTinySynth(opt){
 		return [
 			{type:"M",notes:[0,4,7],scale:"M"},
 			{type:"m",notes:[0,3,7],scale:"m"},
+			{type:"M7",notes:[0,4,7,11],scale:"M"},
+			{type:"7",notes:[0,4,7,10],scale:"M"},
+			{type:"m7",notes:[0,3,7,10],scale:"m"},
+			{type: "dim",notes:[0,3,6],scale:"dim"},
+			{type:"aug",notes:[0,4,8],scale:"aug"},
+			{type:"sus4",notes:[0,5,7],scale:"M"},
+			{type:"sus2",notes:[0,2,7],scale:"M"}
 		];
 	},
 	getScaleTypes: function() {
 		return [
-			{type:"M",notes:[0,2,4,5,7,9,11]},
-			{type:"m",notes:[0,2,3,5,7,8,10]},
+			{type:"M",fullName:"Major",notes:[0,2,4,5,7,9,11]},
+			{type:"m",fullName:"Minor",notes:[0,2,3,5,7,8,10]},
+			{type:"dim",fullName:"Diminished",notes:[0, 2, 3, 5, 6, 8, 9, 11]},
+			{type:"aug",fullName:"Augmented",notes:[0, 3, 4, 7, 8, 11]},
 		];
+	},
+	getPitchBitmap: function(accompArray) {
+		// reduces a set of Midi Note Numbers to a bitmap 16 bit (or technically 12 bit) integer that 
+		// represents which pitch classes are held down, e.g. C,E,G.
+		return accompArray.map(p=>p%12).reduce((a,v)=>(a|(1<<v)),0);
+	},
+	getChord: function (accompArray) {
+		// based on an array of notes held down for accompaniment, determines the chord
+		try {
+			if (accompArray.length<3) return [];	
+			var notes = accompArray.map(n=>n).sort();  // clone the array and sort it so lowest note is first
+			var pitches = notes.map(p => p % 12);
+			var pitchBits = this.getPitchBitmap(accompArray);
+			var minOct = (accompArray.map(p => Math.floor(p/12)).reduce((a,v) => (v<a ? v : a)));
+			var chordTypes = this.getChordTypes();
+			var possibleChords = [];
+			for (var k = 0; k < 12; k++) {
+				for (var chord of chordTypes) {
+					var transposedNotes = chord.notes.map(p => (p+k)%12);
+					var thisChordBits = this.getPitchBitmap(transposedNotes);
+					if (thisChordBits==pitchBits) {
+						possibleChords.push(
+							{	
+								noteNumber:k,
+								noteName:this.noteNameArray[k],
+								chordType:chord.type,
+								chordScale:chord.scale,
+								octave:minOct,
+								inversion:transposedNotes.indexOf(pitches[0])
+							});
+					}
+				}
+			}
+			return possibleChords;
+		} catch (ex) {
+			return [];
+		}
+	},
+	explainChord: function(chordRootName,chordType) {
+		// returns an array explaining what notes to play to get that chord e.e. synth.explainChord("C","M") => ["C","E","G"]
+		try {
+			var pitch = this.noteNumberArray[chordRootName];
+			var chord = ((this.getChordTypes()).filter(c => c.type==chordType))[0];
+			var keyChord = chord.notes.map(n => (n+pitch)%12);
+			return keyChord.map(p=>this.noteNameArray[p]);
+		} catch (ex) { 
+			return [];
+		}
+	},
+	explainScale: function(scaleRootName,scaleType) {
+		try {
+			var pitch = this.noteNumberArray[scaleRootName];
+			var scale = this.getScale(scaleType);
+			var keyScale = scale.notes.map(n => (n+pitch)%12);
+			return keyScale.map(p=>this.noteNameArray[p]);
+		} catch (ex) { 
+			return [];
+		}
+	},
+	getScale: function(scaleType) {
+		try {
+			return ((this.getScaleTypes()).filter(c => c.type==scaleType))[0];
+		} catch (ex) { 
+			return undefined;
+		}
+	},
+	toScalePositionArray: function(scaleRootNote,scaleType) {
+		try {
+			var scaleRootPitch = scaleRootNote % 12;
+			var scale = this.getScale(scaleType).notes.map(p => (p + scaleRootPitch));
+			var notes = []; for (var i = 0; i < 128; i++) notes.push(null);
+			for (var o = -2; o < 12; o++) {
+				for (var i = 0; i < scale.length; i++) {
+					var n = o*12+scale[i];
+					if (n>=0 && n<notes.length) notes[n] = [i,o,0];
+				}
+			}
+			for (var i = 0; i < notes.length; i++) {
+				if (notes[i]!==null) {}
+				else {
+					for (var j = 1; j < 12; j++) {
+						if (i>j && notes[i-j] != null) { notes[i] = [notes[i-j][0],notes[i-j][1],notes[i-j][2]+j]; break; }
+						else if (i+j<notes.length && notes[i+j] != null) { notes[i] = [notes[i+j][0],notes[i+j][1],notes[i+j][2]-j]; break; }
+					}
+				}
+			}
+			return notes;
+		} catch (ex) {
+			return [];
+		}
+	},
+	fromScalePositionArray: function(scalePositionArray,scaleRootNote,scaleType) {
+		try {
+			var scaleRootPitch = scaleRootNote % 12;
+			var scale = this.getScale(scaleType).notes.map(p => (p + scaleRootPitch));
+			var outArray = [];
+			for (var el of scalePositionArray) {
+				var newNote = 12*el[1]+scale[el[0]]+el[2];
+				if (newNote<0 || newNote>=128) newNote = null;
+				outArray.push(newNote);
+			}
+			return outArray;
+		} catch (ex) { 
+			return [];
+		}
+	},
+	noteNamesToNumbers: function(a) {
+		if (typeof(a)=="string") {
+			a = a.split(",");
+		}
+		var o = [];
+		var lastNote = null;
+		for (var thisName of a) {
+			if (lastNote === null || lastNote === undefined) {
+				o.push(0);
+			} else {
+				if (this.noteNumberArray[thisName]) {
+					var inc = this.noteNumberArray[thisName] - lastNote;
+					if (inc<0) inc += 12;
+					o.push(inc);
+				}
+			}
+			lastNote = this.noteNumberArray[thisName];
+		}
+		var o2 = [];
+		var lastNote = 0;
+		for (var thisInc of o) {
+			lastNote = lastNote + thisInc;
+			o2.push(lastNote);
+		}
+		return o2;
+	},
+	transposeNoteWithAccompaniment: function(noteNumber, chord, keyNote,keyScaleType) {
+		// the main function that can transpose a note given a chord record saved from getChord
+		// note: if you pass an accompaniment note array instead of a chord, it figures out the chord!
+		try {
+			if (Array.isArray(chord)) {
+				var chordChoices = this.getChord(chord);  // convert accomp array to chord
+				if (!chordChoices || chordChoices.length==0) return noteNumber;
+				chord = chordChoices[0];
+			}
+			var pitch = noteNumber % 12;
+			var octave = Math.floor(noteNumber/12);
+			
+		} catch (ex) {
+			return noteNumber;
+		}
 	},
     //------ DW: Code from my MIDI Access Module expands the tiny synth to 
     //------ automatically be able to handle incoming and outgoing MIDI messages

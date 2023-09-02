@@ -1,0 +1,6 @@
+So now I know which chord the accompaniment keys played (roughly).
+I need to now determine how to change the bassline notes to match the played chord.
+The idea is that each chord type is associated with its corresponding scale (and my music theory understanding of this bit is a bit iffy).
+Another issue is that when I improvise I may play, for example, a ii chord in C major, which is really a D minor chord.  So should I use a D minor scale or a C major scale?
+	* This question can be addressed by the question, if I play A in my original bassline and have the key set to C major, should that transcribe to A# or B if I am playing a Dm (ii) chord? B definitely sounds better.  But what my fancy yamaha keyboard does is to play A.  As in, C,E,G,A,G,E bassline gets transposed to D,F,A,A,A,F,D.  Hmmm but why?
+	
