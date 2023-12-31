@@ -21,11 +21,9 @@
 <LINK REL="stylesheet" TYPE="text/css" HREF="drawbars.css">
 <STYLE TYPE="text/css">
 .bigButton {
-	height: 70px;
-	width: 70px;
 	vertical-align: middle;
 	text-align: center;
-	font-size: 14pt;
+	font-size: 12pt;
 	font-weight: bold;
 }
 .drumpad {
@@ -1622,10 +1620,10 @@ function dmMinorBeatTimer() {
 			<tr data-tabname="KeyboardDrums" data-tab-panel-selected="0">
 				<td>
 					<span style="float: right;">
-						<button class=bigButton onclick="mainPlayButton()">&#9656;<div style="font-size: 8pt;"><span id=playSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="playSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Play</div></button>&nbsp;
-						<button class=bigButton onclick="mainRecordButton()">&#9679;<div style="font-size: 8pt;"><span id=recordSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="recordSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Record</div></button>&nbsp;
-						<button class=bigButton onclick="mainStopButton()">&#9642;<div style="font-size: 8pt;"><br>Stop</div></button>&nbsp;
-						<button class=bigButton onpointerdown="mainLoopButton()">&#8630;<div style="font-size: 8pt;"><br>Loop</div></button>
+						<button class=bigButton onclick="mainPlayButton()"><div style="font-size: 8pt;"><span id=playSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="playSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>&#9656;&nbsp;Play</div></button>
+						<button class=bigButton onclick="mainRecordButton()"><div style="font-size: 8pt;"><span id=recordSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="recordSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>&#9679;&nbsp;Record</div></button>
+						<button class=bigButton onclick="mainStopButton()"><div style="font-size: 8pt;"><br>&#9642;&nbsp;Stop</div></button>
+						<button class=bigButton onpointerdown="mainLoopButton()"><div style="font-size: 8pt;"><br>&#8630;&nbsp;Loop</div></button>
 					</span>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tskeyboard></div>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums></div>
