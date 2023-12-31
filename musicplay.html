@@ -21,7 +21,12 @@
 <LINK REL="stylesheet" TYPE="text/css" HREF="drawbars.css">
 <STYLE TYPE="text/css">
 .bigButton {
-	font-size: 30pt;
+	height: 70px;
+	width: 70px;
+	vertical-align: middle;
+	text-align: center;
+	font-size: 14pt;
+	font-weight: bold;
 }
 .drumpad {
 	max-height: 70px;
@@ -275,6 +280,11 @@ function recordPlaybackObject() {
 function insertDrawbars(destDiv, instrumentObject) {
 	//--- inserts drawbars into a Div to control an instrument's harmonics
 	var ndb = instrumentObject.getNumDrawbars();
+	var tableElem = document.createElement("table");
+	tableElem.className = "drawbarTable";
+	destDiv.appendChild(tableElem);
+	var trElem = document.createElement("tr");
+	tableElem.appendChild(trElem);
 	for (var i = 0; i < ndb; i++) {
 		var setupDrawbar = function(db,ndb) {
 			dbl = ["16'","5<sup>1/3</sup>'","8'","4'","2<sup>2/3</sup>'","2","1<sup>3/5</sup>'","1<sup>1/3</sup>'","1'"];
@@ -283,15 +293,21 @@ function insertDrawbars(destDiv, instrumentObject) {
 			newDrawbar.className = "drawbar";
 			newDrawbar.min = 0; newDrawbar.max = 8;
 			newDrawbar.value = instrumentObject.getDrawbarDefault(ndb-db-1);
+			newDrawbar.setAttribute("orient","vertical");
 			newDrawbar.addEventListener("change", function(evt) {
 				instrumentObject.setDrawbar(ndb-db-1, parseInt(newDrawbar.value,10), 0);
 			});
-			destDiv.appendChild(newDrawbar);
-			var drawbarLabel = document.createElement("span"); drawbarLabel.innerHTML = dbl[ndb-db-1];
-			var drawbarBr = document.createElement("br"); destDiv.appendChild(drawbarLabel); destDiv.appendChild(drawbarBr);
+			var tdElem = document.createElement("td");
+			tdElem.className = "drawbarCell";
+			tdElem.appendChild(newDrawbar);
+			var textToUse = dbl[ndb-db-1]; if (!textToUse.includes('<sup>')) { textToUse += "<sup></sup>"; }
+			var drawbarLabel = document.createElement("span"); drawbarLabel.innerHTML = textToUse;
+			var drawbarBr = document.createElement("br"); tdElem.appendChild(drawbarBr); tdElem.appendChild(drawbarLabel);
+			trElem.appendChild(tdElem);
 		};
 		setupDrawbar(i,ndb);
 	}
+	destDiv.appendChild(tableElem);
 }
 
 function insertEnvelope(destDiv, instrumentObject) {
@@ -1042,7 +1058,6 @@ function enableDrawbar() {
 	insertEnvelope(el("envelope"),adjWave);
 	insertGeneralControls(el("generalcontrols"),adjWave);
 	synth.setProgram(0,16);  // set to organ
-	el("prog").value = 16;
 }
 
 
@@ -1582,7 +1597,7 @@ function dmMinorBeatTimer() {
 	<button style="display:none" id="butInstall">Install as App</button>
 </div>
 <div style="width: 100%; display: none;" id="Panel:Main">
-	Instrument Loaded Status: <span id="inststatus">Not Loaded</span><br>
+	<div style="display: none;">Instrument Loaded Status: <span id="inststatus">Not Loaded</span><br></div><!-- still there in case we want to put it back or make it fancy somehow -->
 	<table style="width: 100%; " class="maintabtable">
 		<colgroup>
 			<col style="width: 100%;">
@@ -1594,7 +1609,7 @@ function dmMinorBeatTimer() {
 						<a href="#" data-tabname="KeyboardDrums" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Keyboard and Drums</a>
 						<a href="#" data-tabname="Main" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Main Settings</a>
 						<a href="#" data-tabname="Tracks" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Tracks</a>
-						<a href="#" data-tabname="DrumMachine" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drum and Accomp Machine</a>
+						<a href="#" data-tabname="DrumMachine" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drum Machine</a>
 						<a href="#" data-tabname="Drawbars" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drawbars</a>
 						<a href="#" data-tabname="MIDIPlayback" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI File Playback</a>
 						<a href="#" data-tabname="MIDISetup" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI Setup</a>
@@ -1607,14 +1622,11 @@ function dmMinorBeatTimer() {
 			<tr data-tabname="KeyboardDrums" data-tab-panel-selected="0">
 				<td>
 					<span style="float: right;">
-						<button class=bigButton onclick="mainPlayButton()">&#x23ef;<div style="font-size: 8pt;"><span id=playSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="playSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Play</div></button>&nbsp;
-						<button class=bigButton onclick="mainRecordButton()">&#x23fa;<div style="font-size: 8pt;"><span id=recordSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="recordSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Record</div></button>&nbsp;
-						<button class=bigButton onclick="mainStopButton()">&#x23f9;<div style="font-size: 8pt;"><br>Stop</div></button>&nbsp;
-						<button class=bigButton onpointerdown="mainLoopButton()">&#x1f501;<div style="font-size: 8pt;">Loop Back,<br>Record Next Track</div></button>
+						<button class=bigButton onclick="mainPlayButton()">&#9656;<div style="font-size: 8pt;"><span id=playSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="playSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Play</div></button>&nbsp;
+						<button class=bigButton onclick="mainRecordButton()">&#9679;<div style="font-size: 8pt;"><span id=recordSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="recordSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>Record</div></button>&nbsp;
+						<button class=bigButton onclick="mainStopButton()">&#9642;<div style="font-size: 8pt;"><br>Stop</div></button>&nbsp;
+						<button class=bigButton onpointerdown="mainLoopButton()">&#8630;<div style="font-size: 8pt;"><br>Loop</div></button>
 					</span>
-					<div id="divMidiEvents" style="float: left; border: thin solid black; overflow: hidden; font-weight: normal; font-size: 10pt; height: 65pt; width: calc(100vw - 280pt);">
-						MIDI Events Appear Here
-					</div>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tskeyboard></div>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums></div>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums2></div>
@@ -1739,7 +1751,10 @@ function dmMinorBeatTimer() {
 							<div id=midioutputs></div>
 						</td>
 					</tr></table>
-					<a href="#" onclick="javascript: refreshMidiDevices();">Refresh Midi Devices</a>
+					<a href="#" onclick="javascript: refreshMidiDevices();">Refresh Midi Devices</a><br/><br/>
+					<div id="divMidiEvents" style="float: left; border: thin solid black; overflow: hidden; font-weight: normal; font-size: 10pt; height: 65pt; width: calc(100vw - 280pt);">
+						MIDI Events Appear Here
+					</div>
 				</td>
 			</tr>
 			<tr data-tabname="KeyAssignments" data-tab-panel-selected="0">
