@@ -302,6 +302,7 @@ function insertDrawbars(destDiv, instrumentObject) {
 			newDrawbar.className = "drawbar ";
 			newDrawbar.min = 0; newDrawbar.max = 8;
 			newDrawbar.value = instrumentObject.getDrawbarDefault(ndb-db-1);
+			newDrawbar.id = "db" + (ndb-db-1);
 			var myColor = dbc[ndb-db-1];
 			if (myColor=="white") { myColor = "#708090"; }
 			newDrawbar.style.accentColor = myColor;
@@ -388,6 +389,10 @@ function SetProgram(p){
 var minVelocity = 50;
 var maxVelocity = 127;
 var minModulation = 0;
+var transposeToBlues = false;
+var transposeToPentatonic = false;
+var bluesTransposingTable = [];
+var pentatonicTransposingTable = [];
 var repeatKey = 0;
 
 var currentTrack = 1;	// index into the tracks array for keys being played right now
@@ -644,6 +649,13 @@ function updateFriendlyData(fe) {
 	return fe;
 }
 
+function getCurrentInstrument() {
+	try {
+		var currentChannel = tracks[currentTrack].channel;
+		return synth.pg[currentChannel];
+	} catch (ex) { return -1; }
+}
+
 function defaultProcess(n) {
 	// Process a MIDI event or note as it comes in, to add custom functionality.    
 	// n contains these fields:    
@@ -667,11 +679,22 @@ function defaultProcess(n) {
 	//  mainStopButton(): stop recording
 	//  mainRecordButton(): start recording
 	//      
+	//console.log("received message " + JSON.stringify(n) + " at " + synth.currentTime());
+	
 	// Shift channel to channel we are recording on, except for drums    
 	if (n.musicalCommand && n.channel != 9) n.channel = currentChannel();    
 	// Minimum velocity to help with sticky touch sensitive keys    
 	if (n.command=='noteOn' && n.velocity < minVelocity) n.velocity = minVelocity;    
 	if (n.command=='noteOn' && n.velocity > maxVelocity) n.velocity = maxVelocity;    
+	// Special scales.
+	if (n.command=='noteOn'||n.command=='noteOff') {
+		if (transposeToBlues && bluesTransposingTable && bluesTransposingTable.length == 128) {
+			try { n.note = bluesTransposingTable[n.note]; } catch (bsex) { }
+		}
+		if (transposeToPentatonic && pentatonicTransposingTable && pentatonicTransposingTable.length == 128) { 
+			try { n.note = pentatonicTransposingTable[n.note]; } catch (psex) { }
+		}
+	}
 	// All set up for AKAI:    
 	if (n.device.includes('AKAI')) {
 		if (n.command=='noteOn'||n.command=='noteOff') {
@@ -717,6 +740,14 @@ function defaultProcess(n) {
 					if (n.velocity < minModulation) n.velocity = minModulation;
 				}
 			}
+			else if (n.note  >= 48 && n.note <= 51 && getCurrentInstrument()==16) {
+				// green knob bank controls blocks of drawbars if organ is the current instrument
+				var drawbarsToControl = [[0,1],[2,3],[4,5],[6,7,8]];
+				var drawbarValue = fitToRange(Math.floor(n.velocity / 14),0,8);
+				var myDrawbars = drawbarsToControl[n.note-48];
+				myDrawbars.map(function(x) { adjWave.setDrawbar(x,drawbarValue); dg("db" + x).value = drawbarValue; });
+				return;
+			}                                                                                                                   
 		}
 	}
 	play(n);    
@@ -824,6 +855,21 @@ function updatePlayRecordSliders()
 	} catch (ex2) { }
 }
 
+function mainMidiInputHandler(message) {
+	var midiEventElem = dg("divMidiEvents");
+	var fe = makeFriendlyMidiEvent(message);
+	if (fe.command == "noteOn" && onNextNoteDown) {
+		var funcToCall = onNextNoteDown;
+		onNextNoteDown = null;	// we clear out the onNextNoteDown function so it only calls once, but it can restart itself by filling itself in
+		funcToCall(message,fe);
+	}
+	midiEventElem.innerHTML = (fe.command) + "<br>" + "Ch " + (1+fe.channel) + "<br>Note " + fe.note + " " + getNoteNumberName(fe.note) + " / Vel " + fe.velocity + "<br>Dev: " + fe.device;
+	// routine that lets us modify the results of pressing piano keys
+	var timeDiff = 0;
+	if (debugmsg) { console.log(makeFriendlyMidiEvent(message)); }
+	processNote(message,currentNoteFunction);
+  };
+
 function Init(){
   dg("txtAreaNoteCode").textContent = defaultNoteFunction;
   synth=new WebAudioTinySynth({voices:64});
@@ -838,19 +884,7 @@ function Init(){
   synth.passThruMIDI = false;
   var midiEventElem = dg("divMidiEvents");
   setInterval(updatePlayRecordSliders, 333);
-  synth.onmidimessage = function(message) {
-    var fe = makeFriendlyMidiEvent(message);
-	if (fe.command == "noteOn" && onNextNoteDown) {
-		var funcToCall = onNextNoteDown;
-		onNextNoteDown = null;	// we clear out the onNextNoteDown function so it only calls once, but it can restart itself by filling itself in
-		funcToCall(message,fe);
-	}
-	midiEventElem.innerHTML = (fe.command) + "<br>" + "Ch " + (1+fe.channel) + "<br>Note " + fe.note + " " + getNoteNumberName(fe.note) + " / Vel " + fe.velocity + "<br>Dev: " + fe.device;
-	// routine that lets us modify the results of pressing piano keys
-	var timeDiff = 0;
-	if (debugmsg) { console.log(makeFriendlyMidiEvent(message)); }
-	processNote(message,currentNoteFunction);
-  };
+  synth.onmidimessage = mainMidiInputHandler;
   setInterval(function(){
     if (!synth.playing) return;
     var st=synth.getPlayStatus();
@@ -1008,6 +1042,8 @@ function userInitiatedAudioStart()
 	loadDrumMachineNames();
 	setTimeout(dmMinorBeatTimer,100);
 	enableDrawbar();
+	bluesTransposingTable = synth.fromScalePositionArray(synth.toScalePositionArray(60,"M"),60,"b");
+	pentatonicTransposingTable = synth.fromScalePositionArray(synth.toScalePositionArray(60,"M"),60,"p");
 }
 
 var numDrumMachines = 4;
@@ -1165,6 +1201,9 @@ function loadTrackData(e)
 		if (dg("trRecord"+i).checked) currentTrack = i;
 		if (dg("trRecord"+i).checked) kbdTrack = i;
 		tracks[i].mute = (dg("trMute"+i).checked);
+		if (!e || e.target == dg("trMute"+i)) {
+			if (tracks[i].mute) synth.setChMute(tracks[i].channel,true,0); else synth.setChMute(tracks[i].channel,false,0);
+		}
 		tracks[i].instrument = parseInt(dg("trInstrument"+i).value,10);
 		if (tracks[i].channel != 9 && (!e || e.target == dg("trInstrument"+i))) {
 			synth.send([(0xC0+tracks[i].channel),(tracks[i].instrument & 0x7F)]);
@@ -1175,6 +1214,11 @@ function loadTrackData(e)
 		tracks[i].replay = parseInt(dg("trReplay"+i).value,10);
 		tracks[i].offset = parseInt(dg("trOffset"+i).value,10);
 	}
+}
+
+function setCurrentTrack(n) {
+	currentTrack = n; kbdTrack = n;
+	dg("trRecord"+n).checked = true;
 }
 
 function changeInstrumentCategory(e) {
@@ -1323,8 +1367,10 @@ var loopedRecording = [];
 var currentRecording = [];
 var currentPlaybackControl = null;
 var currentRecordingLength = 0;		// set to 0 when recording is empty, otherwise we only record to integer multiples of the first part (typically drums)
+var currentLoopStartTime = 0;
 var undoStack = [];
 var notesAddedFlag = false;
+var tracksAdded = 0;
 
 var onNextNoteDown = null;	// next time a note gets pushed down, this function gets called with (message,fe) where fe is the friendly english version of the midi message
 
@@ -1344,8 +1390,11 @@ function mainRecordButton(noOverwritePrompt)
 		clearUndoStack();
 	}
 	currentRecordingLength = 0;
+	currentLoopStartTime = 0;
+	tracksAdded = 0;
 	loopedRecording = [];
 	synth.record(currentRecording);
+	setCurrentTrack(0);
 }
 
 function intToLedClass(n)
@@ -1383,7 +1432,7 @@ function mainUndoButton()
 		mainStopButton();
 		popUndoStack();
 		setUndoLeds(1); setTimeout(function() { setUndoPastLedBasedOnStack(); }, 250);
-		//mainLoopButton();
+		mainLoopButton();
 	}
 }
 
@@ -1439,8 +1488,71 @@ function mainStopButton()
 	onNextNoteDown = function(){};
 }
 
-function mainLoopButton()
+function waitIfTooEarly(callback, timeWindow) 
+{		// if we are "too early" with a button, replays it by calling the callback at a more suitable later time (asynchronously), and returns true.   otherwise returns false.
+		// time window is optional and in seconds.  If not present, the last half of the recording is considered the time window (good for loop, not so good for notes).
+	if (!evaluateEarlyLate()) return false;
+	
+	var nowTime = synth.currentTime();
+	var endTime = currentPlaybackControl.getEndTime();
+	if (debugmsg) console.log("now: " + nowTime + ", endTime = " + endTime);
+	if (!timeWindow) timeWindow = currentRecordingLength / 2;
+	if (nowTime >= endTime - timeWindow && nowTime < endTime) {
+		if (debugmsg) console.log("Early Loop Being Delayed");
+		currentPlaybackControl.onEnd = function () { 
+			if (debugmsg) console.log("current recording drums length: " + currentRecording.filter(r=>r.type=="midi" && (r.msg[0]&0x0F)==9).length);
+			if (debugmsg) console.log("calling callback: " + callback.toString().substr(0,100));
+			callback();
+			return "stop";
+		}
+		return true;
+	}
+	return false;
+}
+
+function removeLateRecords()
 {
+	// If the loop button was pressed in the too late window, remove any notes that were recorded in that window
+	if (!evaluateEarlyLate()) return false;
+	
+	var nowTime = synth.currentTime();
+	var startTime = currentPlaybackControl.getTimeStarted();
+	if (debugmsg) console.log("now: " + nowTime + ", startTime = " + startTime);
+	var numRemoved = 0;
+	var endWindow = startTime + (currentRecordingLength / 2);
+	if (nowTime > startTime && nowTime < endWindow) {
+		numRemoved = 0;
+		for (var i = 0; i < currentRecording.length; i++) {
+			if (currentRecording[i].type == 'midi' && currentRecording[i].t >= startTime && currentRecording[i].t < endWindow) {
+				currentRecording.splice(i,1); i--; numRemoved++;
+			}
+		}
+		if (debugmsg) console.log("Late Loop Notes Removed: " + numRemoved);
+		return true;
+	}
+	return false;
+}
+
+function evaluateEarlyLate() 
+{
+	if (!currentPlaybackControl) return false;
+	if (!synth.recordings) return false;
+	if (synth.recordings.length==0) return false;
+	
+	if (currentRecordingLength==0) return false;
+	if (currentLoopStartTime==0) return false;
+	return true;
+}
+
+
+
+function mainLoopButton(dontCheckEarly)
+{
+	if (!dontCheckEarly) {
+		if (waitIfTooEarly(function() { setTimeout(function() { mainLoopButton(true); },5); })) return;
+	}
+	removeLateRecords();
+	currentLoopStartTime = synth.currentTime();
 	if (synth.recordings.includes(currentRecording)) {
 		synth.stopRecord(currentRecording);
 		if (currentRecordingLength==0) {	// recording first track: this sets the length for the rest
@@ -1460,6 +1572,7 @@ function mainLoopButton()
 	kbdTrack = currentTrack;
 	dg("trRecord"+currentTrack).checked = true;
 	currentRecording = [];	// we start recording right away as we are looping the playback
+	tracksAdded++;
 	synth.record(currentRecording, currentRecordingLength);
 	prepareRecording();
 }
@@ -1470,12 +1583,14 @@ function prepareRecording()
 	notesAddedFlag = false;
 	currentPlaybackControl.onEnd = function() {
 		// then every time we loop around, we clear and restart the recording so it will start on an even downbeat
-		if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
+		for (var i = 0; i < synth.recordings.length; i++) { synth.stopRecord(synth.recordings[i]); }
 		currentRecording = [];
 		synth.record(currentRecording, currentRecordingLength);
 	};
 	onNextNoteDown = function() {
 		// and when the user plays a note, we turn off the special onEnd part
+		notesAddedFlag = true;
+		if (synth.currentTime() + 0.33 >= currentPlaybackControl.getEndTime()) return;  // ignore at the end of the loop
 		currentPlaybackControl.onEnd = function(){};
 		setUndoLeds(undefined,2);
 	};
@@ -1778,6 +1893,11 @@ function dmMinorBeatTimer() {
 					<input type="range" value="127" min="0" max="127" oninput="maxVelocity=this.value"/><br/>
 					Min Modulation<br/>
 					<input type="range" value="0" min="0" max="127" oninput="minModulation=this.value; sendCurrentChannel([0xB0,1,minModulation]);"/><br/>
+					<br/>
+					<i>Special Scales on White Keys</i><br/>
+					<input id="toggleBlues" type="range" value="0" min="0" max="1" step="1" oninput="transposeToBlues = (this.value != 0); if (this.value) { transposeToPentatonic = false; dg('togglePentatonic').value = 0; }" style="width: 30px;"/> Blues<br/>
+					<input id="togglePentatonic" type="range" value="0" min="0" max="1" step="1" oninput="transposeToPentatonic = (this.value != 0); if (this.value) { transposeToBlues = false; dg('toggleBlues').value = 0; }" style="width: 30px;"/> Pentatonic<br/>
+					<br/>
 					Quality : <select onchange="synth.setQuality(this.selectedIndex)"><option>Quality=0</option><option>Quality=1</option><option selected>Quality=2</option></select>
 					<br/>
 				</td>

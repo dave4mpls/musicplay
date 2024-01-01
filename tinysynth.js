@@ -2061,6 +2061,8 @@ function WebAudioTinySynth(opt){
 		var newElem = { "type": "midi", "msg": inmsg, "t": t };
 		for (var i = 0; i < this.recordings.length; i++) {
 			this.recordings[i].push(JSON.parse(JSON.stringify(newElem)));  // every recording gets a copy of the message
+			//console.log("recorded " + JSON.stringify(inmsg) + " for time " + t + " at " + this.currentTime() + ": number of drum entries: " + this.recordings[i].filter(x => x.type=='midi' && (x.msg[0] & 0x0F)==9).length);
+			//console.trace();
 		}
 	},
 	nextMessageAfter(r,t) {
@@ -2163,6 +2165,7 @@ function WebAudioTinySynth(opt){
 		var nr = this.normalizeRecordingTimes(sourceR,baseTime);
 		var sendControl = this.sendRecordedNotes(nr,doNotRecordPlayback,startIndex);
 		var endTime = this.maxTime(nr);
+		var absoluteEndTime = this.currentTime() + endTime - nr[startIndex].t;
 		var msTillEnd = (endTime - nr[startIndex].t)*1000.0;
 		if (msTillEnd<0) msTillEnd = 0;
 		var accompSettingsArray = [];
@@ -2184,6 +2187,12 @@ function WebAudioTinySynth(opt){
 				},
 				"getCurrentNotesOn": function() {
 					return playControl.currentSendControl.getCurrentNotesOn();
+				},
+				"getEndTime": function() {
+					return absoluteEndTime;
+				},
+				"getTimeStarted": function() {
+					return playControl.currentSendControl.getTimeStarted();
 				},
 				"stop": function() {
 					playControl.currentSendControl.stop();
@@ -2213,13 +2222,21 @@ function WebAudioTinySynth(opt){
 				}
 			};
 		}
+		playControl.getEndTime = function() { return absoluteEndTime; }  // make sure to update these with the current loop
+		playControl.getTimeStarted = function() { return playControl.currentSendControl.getTimeStarted(); }
+		
 		playControl.currentSendControl = sendControl;
 		playControl.endTimer = setTimeout(function() {
-			playControl.onEnd();		// call caller-defined callback if present (default function is a no-op)
-			if (playControl.loop) {		// handle looping: if we loop, we play back at the exact moment when the user pressed stop.
-				mysynth.playback(r,mysynth.currentTime(),doNotRecordPlayback,playControl);
-			} else {
+			var customResult = playControl.onEnd();		// call caller-defined callback if present (default function is a no-op)
+			if (customResult=="stop") {
 				playControl.finished = true;
+			}
+			else {
+				if (playControl.loop) {		// handle looping: if we loop, we play back at the exact moment when the user pressed stop.
+					mysynth.playback(r,mysynth.currentTime(),doNotRecordPlayback,playControl);
+				} else {
+					playControl.finished = true;
+				}
 			}
 		}, msTillEnd);
 		return playControl;
@@ -2294,6 +2311,8 @@ function WebAudioTinySynth(opt){
 			{type:"m",fullName:"Minor",notes:[0,2,3,5,7,8,10]},
 			{type:"dim",fullName:"Diminished",notes:[0, 2, 3, 5, 6, 8, 9, 11]},
 			{type:"aug",fullName:"Augmented",notes:[0, 3, 4, 7, 8, 11]},
+			{type:"b",fullName:"Blues",notes:[0,3,5,6,7,10,11]},
+			{type:"p",fullName:"Pentatonic",notes:[0,2,5,7,9,7,9]},
 		];
 	},
 	getPitchBitmap: function(accompArray) {
@@ -2344,6 +2363,19 @@ function WebAudioTinySynth(opt){
 			return [];
 		}
 	},
+	getChordNotes: function(chordRootName,chordType,octave) {
+		// returns an array with note numbers that make a chord
+		try {
+			if (octave===undefined || octave===null) octave = 4;
+			var pitch = this.noteNumberArray[chordRootName];
+			var chord = ((this.getChordTypes()).filter(c => c.type==chordType))[0];
+			var keyChord = chord.notes.map(n => (n+pitch)%12);
+			
+			return keyChord.map(p=>this.noteNameArray[p]);
+		} catch (ex) { 
+			return [];
+		}
+	},
 	explainScale: function(scaleRootName,scaleType) {
 		try {
 			var pitch = this.noteNumberArray[scaleRootName];
@@ -2386,20 +2418,33 @@ function WebAudioTinySynth(opt){
 			return [];
 		}
 	},
-	fromScalePositionArray: function(scalePositionArray,scaleRootNote,scaleType) {
+	fromScalePositionArray: function(scalePositionArray,scaleRootNote,scaleType,scaleOffset) {
 		try {
-			var scaleRootPitch = scaleRootNote % 12;
-			var scale = this.getScale(scaleType).notes.map(p => (p + scaleRootPitch));
+			if (!scaleOffset) scaleOffset = 0;  // if no offset parameter provided, same as zero offset.  The offset lets you e.g. transpose from C major to C major with a starting note of F for translating an accompaniment to an F chord when your melody is still in C.  The offset is the number of SCALE positions, not half steps -- e.g. for C -> F in C Major it is 3.
+			scaleOffset = scaleOffset % 12;
+			if (scaleOffset < 0) scaleOffset = 7 - scaleOffset;
+			var scaleRootPitch = scaleRootNote % 7;
+			var startScale = this.getScale(scaleType).notes.map(p => (p + scaleRootPitch));
+			var scale = [];
+			for (var i = 0; i < startScale.length; i++) scale.push(startScale[i]);
+			for (var i = 0; i < startScale.length; i++) scale.push(startScale[i]);  // double the scale data so you can handle offsets
 			var outArray = [];
 			for (var el of scalePositionArray) {
-				var newNote = 12*el[1]+scale[el[0]]+el[2];
+				var newNote = 12*el[1]+scale[el[0]+scaleOffset]+el[2];
 				if (newNote<0 || newNote>=128) newNote = null;
 				outArray.push(newNote);
 			}
-			return outArray;
+			return this.removeScaleNaNs(outArray);
 		} catch (ex) { 
 			return [];
 		}
+	},
+	removeScaleNaNs(a) {
+		var outArray = [];
+		for (var i = 0; i < a.length; i++) { if (a[i]!==null && a[i]!==undefined && !isNaN(a[i])) outArray.push(a[i]); }
+		while (outArray.length < 128) outArray.push(127);
+		while (outArray.length > 128) outArray.pop();
+		return outArray;
 	},
 	noteNamesToNumbers: function(a) {
 		if (typeof(a)=="string") {
@@ -2443,7 +2488,7 @@ function WebAudioTinySynth(opt){
 		var pitch = sourceNote % 12;
 		return pitch + 60;
 	},
-	getNoteTranspositionTable: function(sourceRootNote,sourceScale,chord,destScaleRoot,flagClosestOctave,flagForceToDestScale,destScaleType) {
+	getNoteTranspositionTable: function(sourceRootNote,sourceScale,chord,flagClosestOctave,flagForceToDestScale,destScaleRoot,destScaleType) {
 		// given a source root note and source scale (e.g. 60,"M" for C Major), creates a table mapping each note number to the corresponding note number to use instead, to transpose the accompaniment written in that source.
 		// The chord can be an array of held down accompaniment notes or the result of getChord.  If no valid chord is provided, it returns null.
 		// DestScaleRoot and DestScaleType are only used if flagForceToDestScale is true; instead of using the scale associated with the root of the chord in that case, it uses the destination scale starting with the root note of the chord (if the root note is in that scale, otherwise the flag has no effect).
@@ -2452,7 +2497,28 @@ function WebAudioTinySynth(opt){
 		if (!chord) return null;
 		try {
 			var scalePositionArray = this.toScalePositionArray(sourceRootNote,sourceScale);
-			var baseTranspositionTable = this.fromScalePositionArray(scalePositionArray,chord.noteNumber,(chord.chordScale));
+			var baseTranspositionTable = null; 
+			if (flagForceToDestScale && destScaleRoot !== undefined && destScaleType !== undefined) {
+				var destScaleRootPitch = getMiddlingNote(destScaleRoot);
+				var scalePosition = scalePositionArray[destScaleRootPitch];
+				if (scalePosition[2] !== 0) {
+					baseTranspositionTable = this.fromScalePositionArray(scalePositionArray,chord.noteNumber,(chord.chordScale));  // if it's not part of the destination scale, do it as though flagForceToDestScale wasn't true
+				} else {
+					baseTranspositionTable = this.fromScalePositionArray(scalePositionArray,destScaleRoot,destScaleType,scalePosition[0]);  
+				}
+			} else {
+				baseTranspositionTable = this.fromScalePositionArray(scalePositionArray,chord.noteNumber,(chord.chordScale));
+			}
+			if (flagClosestOctave) {
+				for (var i = 0; i < baseTranspositionTable.length; i++) {
+					while (baseTranspositionTable[i] > i + 12) { baseTranspositionTable[i] -= 12; }
+					while (baseTranspositionTable[i] < i - 12) { baseTranspositionTable[i] += 12; }
+				}
+			}
+			for (var i = 0; i < baseTranspositionTable.length; i++) {
+				if (baseTranspositionTable[i]<0) baseTranspositionTable[i] = 0;
+				if (baseTranspositionTable[i]>127) baseTranspositionTable[i] = 127;
+			}
 			return baseTranspositionTable;
 		} catch (ex) { return null; }
 		return null;
