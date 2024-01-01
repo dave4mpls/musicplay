@@ -746,7 +746,7 @@ function WebAudioTinySynth(opt){
       this.autoGainLevel = 2;   // Levels are: 0, no auto-gain; 1, only on instruments I selected as needing it most; 2, on all instruments.
       this.autoGainSetTo = 0.7;  // what we set the amplitude to in autoGain
       this.autoGainIgnoreAbove = 0.5;   // we leave samples alone if their maximum is above this (during AutoGain)
-      this.autoGainInstruments = [ ];
+      this.autoGainInstruments = [ 32 ];	// nobody can hear these so amplify them
       this.autoGainMaxes = { };  // maximums for all samples so we can turn auto gain or off at any time
       this.selectedInputs = [ "internal" ]; this.selectedOutputs = ["internal"];
       this.availableQualities = [true,true,false];   // array of 0-2 indicating which qualities are available.  You have to load at least one instrument successfully, then Quality 2 turns on.  Quality 0/1 turn off for Internet Explorer since it can ONLY do samples.
@@ -1327,17 +1327,19 @@ function WebAudioTinySynth(opt){
         if (activeQuality===2) {
           // sampling version
           pn=p[0];
-          out = this.chvol[ch], sc=v*v/16384, fp[i]=f;
+          out = this.chvol[ch], sc=1, fp[i]=f;
           if (this.autoGainLevel > 0) {    // We multiply the gain if auto-gain is on.
             if (this.autoGainLevel >=2 || this.autoGainInstruments.indexOf(thisInst) >= 0) {
               var sampMax = this.autoGainMaxes[thisInst][n];
               if (sampMax <= this.autoGainIgnoreAbove) {
                 var thisMax = sampMax; var factor = 1;  // we compute a factor that is a power of 2 to multiply by, for cleaner adjustment.
-                while (thisMax*factor*2 < this.autoGainSetTo) { factor *= 2; thisMax *= 2; }
+                while (thisMax*factor*2 < this.autoGainSetTo) { factor *= 2; }
                 sc *= factor;
               }
             }
           }
+	  sc *= v*v*v/(16384*128);  // apply velocity AFTER auto-gain - changed to cubed formula to have more sensitive velocity curve on my keyboard
+	  if (thisInst==32) sc *= 6;  // acoustic bass has a particular softness issue
           o[i]=this.actx.createBufferSource(); o[i].buffer = sample; var endRampDown = false;
           if (!this.rhythm[ch] && p[0].s>=0.39) { 
             o[i].loop = true; 
@@ -2011,7 +2013,7 @@ function WebAudioTinySynth(opt){
 		for (var i = 0; i < r.length; i++) {
 			if (r[i].type=='timestarted') return r[i].t;
 		}
-		return firstNoteTime(r);
+		return this.firstNoteTime(r);
 	},
 	setStartTimeToFirstNote: function(r) {
 		var fnt = this.firstNoteTime(r);
@@ -2425,15 +2427,41 @@ function WebAudioTinySynth(opt){
 		}
 		return o2;
 	},
+	preprocessChord: function(chord) {
+		try {
+			if (Array.isArray(chord)) {
+				var chordChoices = this.getChord(chord);  // convert accomp array to chord
+				if (!chordChoices || chordChoices.length==0) return null;
+				chord = chordChoices[0];
+			}
+			return chord;
+		} catch (ex) {
+			return null;
+		}
+	},
+	getMiddlingNote: function(sourceNote) {
+		var pitch = sourceNote % 12;
+		return pitch + 60;
+	},
+	getNoteTranspositionTable: function(sourceRootNote,sourceScale,chord,destScaleRoot,flagClosestOctave,flagForceToDestScale,destScaleType) {
+		// given a source root note and source scale (e.g. 60,"M" for C Major), creates a table mapping each note number to the corresponding note number to use instead, to transpose the accompaniment written in that source.
+		// The chord can be an array of held down accompaniment notes or the result of getChord.  If no valid chord is provided, it returns null.
+		// DestScaleRoot and DestScaleType are only used if flagForceToDestScale is true; instead of using the scale associated with the root of the chord in that case, it uses the destination scale starting with the root note of the chord (if the root note is in that scale, otherwise the flag has no effect).
+		// If flagClosestOctave is true, it moves all the notes as close as possible to the original note, octave-wise; otherwise it maintains melodic direction.
+		var chord = this.preprocessChord(chord);
+		if (!chord) return null;
+		try {
+			var scalePositionArray = this.toScalePositionArray(sourceRootNote,sourceScale);
+			var baseTranspositionTable = this.fromScalePositionArray(scalePositionArray,chord.noteNumber,(chord.chordScale));
+			return baseTranspositionTable;
+		} catch (ex) { return null; }
+		return null;
+	},
 	transposeNoteWithAccompaniment: function(noteNumber, chord, keyNote,keyScaleType) {
 		// the main function that can transpose a note given a chord record saved from getChord
 		// note: if you pass an accompaniment note array instead of a chord, it figures out the chord!
 		try {
-			if (Array.isArray(chord)) {
-				var chordChoices = this.getChord(chord);  // convert accomp array to chord
-				if (!chordChoices || chordChoices.length==0) return noteNumber;
-				chord = chordChoices[0];
-			}
+			chord = this.preprocessChord(chord);
 			var pitch = noteNumber % 12;
 			var octave = Math.floor(noteNumber/12);
 			
@@ -2477,9 +2505,8 @@ function WebAudioTinySynth(opt){
       for (var i = 0; i < this.inputList.length; i++) {
         if (!this.inputHash[this.inputList[i].id]) continue;  // skip internal input
         try { 
-          //Chrome doesn't like closing things, unfortunately.
-          //this.inputHash[this.inputList[i].id].close();
-          this.inputHash[this.inputList[i].id].onmidimessage = undefined; 
+          //Chrome doesn't like closing things, unfortunately.  Try this.
+          try { this.inputHash[this.inputList[i].id].onmidimessage = undefined; this.inputHash[this.inputList[i].id].close(); } catch(e2) { }
         } catch(e) { }
       }
     },

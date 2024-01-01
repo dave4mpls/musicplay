@@ -20,6 +20,16 @@
 <LINK REL="stylesheet" TYPE="text/css" HREF="pianokeys.css">
 <LINK REL="stylesheet" TYPE="text/css" HREF="drawbars.css">
 <STYLE TYPE="text/css">
+.ledUnlit {
+	color: #808080;
+}
+.ledLitGreen {
+	color: #00FF00;
+}
+.ledLitRed {
+	color: #FF0000;
+}
+
 .bigButton {
 	vertical-align: middle;
 	text-align: center;
@@ -283,14 +293,18 @@ function insertDrawbars(destDiv, instrumentObject) {
 	destDiv.appendChild(tableElem);
 	var trElem = document.createElement("tr");
 	tableElem.appendChild(trElem);
-	for (var i = 0; i < ndb; i++) {
+	for (var i = ndb-1; i >= 0; i--) {
 		var setupDrawbar = function(db,ndb) {
 			dbl = ["16'","5<sup>1/3</sup>'","8'","4'","2<sup>2/3</sup>'","2","1<sup>3/5</sup>'","1<sup>1/3</sup>'","1'"];
+			dbc = [ 'brown','brown','white','white','black','white','black','black','white'];
 			var newDrawbar = document.createElement("input");
 			newDrawbar.type = "range";
-			newDrawbar.className = "drawbar";
+			newDrawbar.className = "drawbar ";
 			newDrawbar.min = 0; newDrawbar.max = 8;
 			newDrawbar.value = instrumentObject.getDrawbarDefault(ndb-db-1);
+			var myColor = dbc[ndb-db-1];
+			if (myColor=="white") { myColor = "#708090"; }
+			newDrawbar.style.accentColor = myColor;
 			newDrawbar.setAttribute("orient","vertical");
 			newDrawbar.addEventListener("change", function(evt) {
 				instrumentObject.setDrawbar(ndb-db-1, parseInt(newDrawbar.value,10), 0);
@@ -373,13 +387,14 @@ function SetProgram(p){
 }
 var minVelocity = 50;
 var maxVelocity = 127;
+var minModulation = 0;
 var repeatKey = 0;
 
 var currentTrack = 1;	// index into the tracks array for keys being played right now
 
 var initialtracks = [		// here are the default values for the tracks where we record, in order to make our auto-accompaniment go!
-	{ channel: 9, category: 256, instrument: 256, messages: [ ], },	// drum track comes first
-	{ channel: 0, category: 0, keyboard: true, instrument: 0, messages: [ ], },
+	{ channel: 9, category: 256, instrument: 256, messages: [ ] },	// drum track comes first
+	{ channel: 0, category: 0, keyboard: true, instrument: 0, messages: [ ] },
 	{ channel: 1, category: 0, instrument: 0, messages: [ ], },
 	{ channel: 2, category: 0, instrument: 0, messages: [ ], },
 	{ channel: 3, category: 0, instrument: 0, messages: [ ], },
@@ -660,25 +675,47 @@ function defaultProcess(n) {
 	// All set up for AKAI:    
 	if (n.device.includes('AKAI')) {
 		if (n.command=='noteOn'||n.command=='noteOff') {
-			if (n.note >= 16 && n.note <= 20) {
+			if (n.note >= 16 && n.note <= 19) {
 				// drums, bank a
 				var akaiDrums = [DRUM_BASS, DRUM_TOM_FLOOR_LOW, DRUM_TOM_FLOOR_HIGH, DRUM_CYMBAL_CRASH,
 					DRUM_HI_HAT_CLOSED];
 				n.note = akaiDrums[n.note-16];
-				n.channel = 9;
+				n.channel = 9; n.velocity = 127;  // don't like akai's touch sensitive pads, they are too hard to press right
 			}
-			else if (n.note == 23) {
-				// top right drum button: loop next
+			else if (n.note >= 32 && n.note <= 35) {
+				// drums, bank b
+				var akaiDrums = [DRUM_BONGO_LOW, DRUM_BONGO_HIGH, DRUM_TAMBOURINE, DRUM_MARACAS];
+				n.note = akaiDrums[n.note-32];
+				n.channel = 9; n.velocity = 127;
+			}
+			else if (n.note == 23 || n.note == 39) {
+				// top right drum button: loop next (under either a or b bank)
 				if (n.command=='noteOn') mainLoopButton();
 				return;
 			}
-			else if (n.note == 22) {
+			else if (n.note == 22 || n.note == 38) {
 				if (n.command=='noteOn') mainStopButton();
 				return;
 			}
-			else if (n.note == 21) {
+			else if (n.note == 21 || n.note == 37) {
 				if (n.command=='noteOn') mainRecordButton(true);
 				return;
+			}
+			else if (n.note == 20 || n.note == 36) {
+				if (n.command=='noteOn') mainUndoButton();
+				return;
+			}
+		}
+		else if (n.command=='controller') {
+			if (n.note == 16) {		// mod joystick up/down -- going up changes modulation parameter
+				var modParm = n.velocity - 64;
+				if (modParm > 0) {
+					n.note = 1;
+					n.velocity = modParm*2;
+					if (n.velocity > 127) n.velocity = 127;
+					if (n.velocity < 10) n.velocity = 0;
+					if (n.velocity < minModulation) n.velocity = minModulation;
+				}
 			}
 		}
 	}
@@ -732,6 +769,14 @@ function updateNoteFunction(e) {
 	} catch (ex1){ syntaxError = ex1.message; }
 	if (syntaxError != "") { alert("There is an error in your code, so it is not being used: " + syntaxError); return; }
 	currentNoteFunction = newCode;
+}
+
+function sendCurrentChannel(msg) {
+	try {
+		var ch = tracks[currentTrack].channel;
+		msg[0] = (msg[0] & 0xF0) + ch;
+		synth.send(msg);
+	} catch (ex) { }
 }
 
 function notePostProcessing(fe) {
@@ -962,6 +1007,7 @@ function userInitiatedAudioStart()
 	refreshTrackDisplay();
 	loadDrumMachineNames();
 	setTimeout(dmMinorBeatTimer,100);
+	enableDrawbar();
 }
 
 var numDrumMachines = 4;
@@ -1025,6 +1071,7 @@ function refreshMidiUI() {
 		newCheckbox.checked = (synth.selectedInputs.indexOf(myInputs[i].id) !== -1);
 		newCheckbox.setAttribute("midiid",myInputs[i].id);
 		newCheckbox.id = "midiinput_" + i;
+		newCheckbox.checked = true;
 		newCheckbox.addEventListener("click",readMidiUI);
 		var newLabel = document.createElement("span");
 		newLabel.innerText = myInputs[i].name;
@@ -1044,6 +1091,7 @@ function refreshMidiUI() {
 		var newBr = document.createElement("br");
 		el("midioutputs").appendChild(newCheckbox); el("midioutputs").appendChild(newLabel); el("midioutputs").appendChild(newBr);
 	}
+	readMidiUI();
 }
 
 function enableDrawbar() {
@@ -1055,7 +1103,6 @@ function enableDrawbar() {
 	insertDrawbars(el("drawbars"),adjWave);
 	insertEnvelope(el("envelope"),adjWave);
 	insertGeneralControls(el("generalcontrols"),adjWave);
-	synth.setProgram(0,16);  // set to organ
 }
 
 
@@ -1083,6 +1130,7 @@ var DRUM_TAMBOURINE = 54;
 var DRUM_BONGO_LOW = 61;
 var DRUM_BONGO_HIGH = 60;
 var DRUM_CLAP = 39;
+var DRUM_MARACAS = 70;
 
 //-- convert a series of keys starting with C into common drum sounds,
 //-- useful for recording the drum track on a keyboard MIDI instrument
@@ -1275,11 +1323,14 @@ var loopedRecording = [];
 var currentRecording = [];
 var currentPlaybackControl = null;
 var currentRecordingLength = 0;		// set to 0 when recording is empty, otherwise we only record to integer multiples of the first part (typically drums)
+var undoStack = [];
+var notesAddedFlag = false;
 
 var onNextNoteDown = null;	// next time a note gets pushed down, this function gets called with (message,fe) where fe is the friendly english version of the midi message
 
 function mainRecordButton(noOverwritePrompt)
 {
+	notesAddedFlag = false;
 	if (noOverwritePrompt==undefined) noOverwritePrompt = false;
 	onNextNoteDown = function(){};
 	if (currentPlaybackControl) {
@@ -1290,18 +1341,90 @@ function mainRecordButton(noOverwritePrompt)
 			if (!confirm("Replace existing recording?")) return;
 		}
 		currentRecording = [];
+		clearUndoStack();
 	}
 	currentRecordingLength = 0;
 	loopedRecording = [];
 	synth.record(currentRecording);
 }
 
-function mainPlayButton()
+function intToLedClass(n)
 {
+	switch (n) {
+		case 0: return "ledUnlit";
+		case 1: return "ledLitGreen";
+		case 2: return "ledLitRed";
+	}
+	return "ledUnlit";
+}
+
+function setUndoLeds(previousTrackValue,currentValue)
+{	// sets the Undo LED's (previous track and current value undo).
+	// if undefined, nothing is changed
+	// 0 is off, 1 is green, 2 is red
+	if (previousTrackValue !== undefined) {
+		dg("undidPreviousTrack").className = intToLedClass(previousTrackValue);
+	}
+	if (currentValue !== undefined) {
+		dg("undidCurrentData").className = intToLedClass(currentValue);
+	}
+}
+
+function mainUndoButton()
+{
+	if (!currentPlaybackControl) return;
+	if (currentRecording && notesAddedFlag) {
+		// there is a current recording, so undo that
+		setUndoLeds(undefined,1); setTimeout(function() { setUndoLeds(undefined,0); }, 250);
+		currentRecording = [];
+		prepareRecording();
+	}
+	else if (undoStack.length > 0 && currentRecording) {
+		mainStopButton();
+		popUndoStack();
+		setUndoLeds(1); setTimeout(function() { setUndoPastLedBasedOnStack(); }, 250);
+		//mainLoopButton();
+	}
+}
+
+function clearUndoStack() {
+	undoStack = [];
+	setUndoLeds(0,0);
+	notesAddedFlag = false;
+}
+
+function pushUndoStack() {
+	if (!loopedRecording) return;
+	try {
+		undoStack.push({ "track": currentTrack, "recording": JSON.parse(JSON.stringify(loopedRecording))});
+		setUndoPastLedBasedOnStack();
+	} catch(ex) { }
+}
+
+function setUndoPastLedBasedOnStack() {
+	setUndoLeds(undoStack.length==0 ? 0 : 2);
+}
+
+function popUndoStack() {
+	try {
+		if (undoStack.length>0) {
+			var restoredObject = undoStack.pop();
+			currentTrack = restoredObject.track;
+			currentRecording = restoredObject.recording;
+		}
+		setUndoPastLedBasedOnStack();
+	} catch(e) { }
+}
+
+function mainPlayButton(loopFlag)
+{
+	setUndoLeds(0,0);
+	notesAddedFlag = false;
 	onNextNoteDown = function(){};
 	if (currentPlaybackControl && currentPlaybackControl.finished) currentPlaybackControl = null;
 	if (!currentPlaybackControl) {
 		currentPlaybackControl = synth.playback(currentRecording);
+		if (loopFlag) { currentPlaybackControl.loop = true; }		
 	} else {
 		currentPlaybackControl.togglePause();
 	}
@@ -1309,6 +1432,8 @@ function mainPlayButton()
 
 function mainStopButton()
 {
+	setUndoLeds(0,0);
+	notesAddedFlag = false;
 	if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
 	if (currentPlaybackControl) { currentPlaybackControl.stop(); currentPlaybackControl = null; }
 	onNextNoteDown = function(){};
@@ -1323,26 +1448,36 @@ function mainLoopButton()
 			currentRecordingLength = synth.recordingLength(currentRecording);
 		}
 	}
-	else return;
+	else {
+		// if we press loop when nothing is being recorded, fall through and start again.
+	}
 	if (currentPlaybackControl) { currentPlaybackControl.stop(); currentPlaybackControl = null; }
 	loopedRecording = JSON.parse(JSON.stringify(currentRecording));
+	pushUndoStack();
 	currentPlaybackControl = synth.playback(loopedRecording);
 	currentPlaybackControl.loop = true;
 	currentTrack++; if (currentTrack > 15) currentTrack = 1;
 	kbdTrack = currentTrack;
 	dg("trRecord"+currentTrack).checked = true;
-	var fixedLengthToUse = currentRecordingLength;
 	currentRecording = [];	// we start recording right away as we are looping the playback
-	synth.record(currentRecording, fixedLengthToUse);
+	synth.record(currentRecording, currentRecordingLength);
+	prepareRecording();
+}
+
+function prepareRecording()
+{
+	setUndoLeds(undefined,0);
+	notesAddedFlag = false;
 	currentPlaybackControl.onEnd = function() {
 		// then every time we loop around, we clear and restart the recording so it will start on an even downbeat
 		if (synth.recordings.includes(currentRecording)) synth.stopRecord(currentRecording);
 		currentRecording = [];
-		synth.record(currentRecording, fixedLengthToUse);
+		synth.record(currentRecording, currentRecordingLength);
 	};
 	onNextNoteDown = function() {
 		// and when the user plays a note, we turn off the special onEnd part
 		currentPlaybackControl.onEnd = function(){};
+		setUndoLeds(undefined,2);
 	};
 }
 
@@ -1454,7 +1589,7 @@ function moveNextBeat() {
         }
     }
     nextBeatIn = getNextBeatIn();     // ms until next minor beat
-	beatCurrentTime += (nextBeatIn / 1000);
+    beatCurrentTime += (nextBeatIn / 1000);
 }
 
 function holdNote(channel, noteNum, velocity, duration, startTime)
@@ -1620,6 +1755,7 @@ function dmMinorBeatTimer() {
 			<tr data-tabname="KeyboardDrums" data-tab-panel-selected="0">
 				<td>
 					<span style="float: right;">
+						<button class=bigButton onclick="mainUndoButton()"><div style="font-size: 8pt;"><span class=ledUnlit id=undidPreviousTrack>&#9679;</span><span class=ledUnlit id=undidCurrentData>&#9679;</span><br/>&#9785;&nbsp;Undo</div></button>
 						<button class=bigButton onclick="mainPlayButton()"><div style="font-size: 8pt;"><span id=playSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="playSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>&#9656;&nbsp;Play</div></button>
 						<button class=bigButton onclick="mainRecordButton()"><div style="font-size: 8pt;"><span id=recordSliderOutside style="visibility: hidden; width: 40px; height: 5px; border: black solid 1px; background-color: white; display: inline-block;"><div id="recordSlider" style="border: none; background-color: blue; width: 50%; height: 100%;"></div></span><BR>&#9679;&nbsp;Record</div></button>
 						<button class=bigButton onclick="mainStopButton()"><div style="font-size: 8pt;"><br>&#9642;&nbsp;Stop</div></button>
@@ -1632,14 +1768,16 @@ function dmMinorBeatTimer() {
 			</tr>
 			<tr data-tabname="Main" data-tab-panel-selected="0">
 				<td>
-					MasterVol<br/>
+					Master Vol<br/>
 					<input type="range" value="50" min="0" max="100" oninput="synth.setMasterVol(this.value/100)"/><br/>
-					ReverbLev<br/>
+					Reverb<br/>
 					<input type="range" value="50" min="0" max="100" oninput="synth.setReverbLev(this.value/100)"/><br/>
-					MinVelocity<br/>
+					Min Velocity<br/>
 					<input type="range" value="50" min="0" max="127" oninput="minVelocity=this.value"/><br/>
-					MaxVelocity<br/>
+					Max Velocity<br/>
 					<input type="range" value="127" min="0" max="127" oninput="maxVelocity=this.value"/><br/>
+					Min Modulation<br/>
+					<input type="range" value="0" min="0" max="127" oninput="minModulation=this.value; sendCurrentChannel([0xB0,1,minModulation]);"/><br/>
 					Quality : <select onchange="synth.setQuality(this.selectedIndex)"><option>Quality=0</option><option>Quality=1</option><option selected>Quality=2</option></select>
 					<br/>
 				</td>
@@ -1657,9 +1795,9 @@ function dmMinorBeatTimer() {
         		            + "<button onclick=\"startDm(" + mi + ")\">Start Now</button>"
         		            + "<button onclick=\"stopDm(" + mi + ")\">Stop Now</button><br/>"
         		            + "Accomp Channel: <input id=drumMachineAccompChannel_mi_ type=number min=1 max=16> "
-        		            + "Accomp <select id=drumMachineAccomp_mi_>" + getAccompOptions() + "</select><br/>"
+        		            //+ "Accomp <select id=drumMachineAccomp_mi_>" + getAccompOptions() + "</select><br/>"
         		            + "Loop?: <input type=checkbox id=drumMachineLoop_mi_ checked> "
-        		            + "Stop When Others Start?: <input id=drumMachineStopOnStart_mi_ type=checkbox checked> "
+        		            //+ "Stop When Others Start?: <input id=drumMachineStopOnStart_mi_ type=checkbox checked> "
 				    + "Volume: <input type=range min=0 max=127 step=1 value=127 id=drumMachineVolume_mi_>";
     		            document.write(dmhead.replace(/[_]mi[_]/gi,mi));
     		            document.write(
@@ -1717,10 +1855,14 @@ function dmMinorBeatTimer() {
 									Drawbars:<br>
 									<div id=drawbars class="control-container"></div>
 								</td>
+							</tr>
+							<tr>
 								<td class="control-cell">
 									Envelope:
 									<div id=envelope class="control-container"></div>
 								</td>
+							</tr>
+							<tr>
 								<td class="control-cell">
 									General Controls:
 									<div id=generalcontrols class="control-container"></div>
@@ -1750,7 +1892,7 @@ function dmMinorBeatTimer() {
 						</td>
 					</tr></table>
 					<a href="#" onclick="javascript: refreshMidiDevices();">Refresh Midi Devices</a><br/><br/>
-					<div id="divMidiEvents" style="float: left; border: thin solid black; overflow: hidden; font-weight: normal; font-size: 10pt; height: 65pt; width: calc(100vw - 280pt);">
+					<div id="divMidiEvents" style="float: left; border: thin solid black; overflow: hidden; font-weight: normal; font-size: 10pt; ">
 						MIDI Events Appear Here
 					</div>
 				</td>

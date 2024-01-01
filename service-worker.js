@@ -13,7 +13,7 @@
 // DW 10/16/2020: Changing this causes all ServiceWorker caches to refresh, and ALSO is linked to
 // the automatic Field Portal Web Version software update code in the client and the server.  So just
 // change this build number and everything will auto-update!
-const CACHE_NAME = '12-31-2023 Build 50';
+const CACHE_NAME = '01-01-2024 Build 52';
 
 // CODELAB: Add list of files to cache here.
 const FILES_TO_CACHE = [
