@@ -2075,63 +2075,127 @@ function WebAudioTinySynth(opt){
 	sendRecordedNotes: function (r, doNotRecordPlayback, startIndex) {
 		// sends the recorded notes; this is a low-level routine and for normal playback you should use the playback function
 		// returns a simple control structure that allows stopping the notes and finding out what index was last played
+		// the control structure also has methods for sending accompaniment notes
 		var recordingArray = this.recordings;
 		if (!startIndex) startIndex = 0;
 		var indx = startIndex;
 		var mysynth = this;
-		var bufferLength = 2;	// # of seconds of notes to buffer into the hardware timer
-		var reloadBufferTimeout = 1;	// # of seconds till you load more
+		var bufferLength = 0.05;	// # of seconds of notes to buffer into the hardware timer - these are VERY SMALL and that is how we make the chord changes happen fast!
+		var reloadBufferTimeout = 0.0125;	// # of seconds till you load more
 		var bufferFillTimer = null;
+		var ntt = null;   // note transposition table for accompaniment
+		var accOnNotes = [];			// actual notes saved to caller and used to generate chords
+		var accOnQueuedNotes = [];		// queued accomp notes that only get moved to accOnNotes when they're done
 		var timeStarted = mysynth.currentTime();
+		var accParms = { "sourceRootNote": 60, "sourceScaleType": "M", "destRootNote": 60, "destScaleType": "M", "flagClosestOctave": false, "flagForceToDestScale": true };  // accompaniment parameters, can be overridden with setAccParms
+		var sendWithNewNote = function(relem,newNote) {
+			var newMsg = relem.msg.map(x => x);	// clone
+			newMsg[1] = newNote;
+			mysynth.send(newMsg,relem.t,doNotRecordPlayback);
+		};
 		var fillNoteBuffer = function() {
 			var ct = mysynth.currentTime();
-			while (indx < r.length && r[indx].t < ct+bufferLength) {
-				if (r[indx].type=="midi") mysynth.send(r[indx].msg,r[indx].t, doNotRecordPlayback);
+			while (indx < r.length && (r[indx].t < ct+bufferLength)) {	
+				if (r[indx].type=="midi") {
+					var originalNote = 0;
+					if (r[indx].msg && r[indx].msg.length>1) { originalNote = r[indx].msg[1]; }
+					var noteToPlay = originalNote;
+					if (ntt && r[indx].msg && r[indx].msg.length>1 && ((r[indx].msg[0] & 0x0F) !== 9) && ((r[indx].msg[0] & 0xF0) == 0x90 || ((r[indx].msg[0] & 0xF0) == 0x80))) {
+						// accompaniment is on: map notes (only for note-on and note-off messages and not for drums)
+						try { noteToPlay = ntt[originalNote]; } catch (accEx) { }
+					}
+					if ((r[indx].msg[0] & 0xF0)==0x80) { }  // don't do note off in the normal stream
+					else if ((r[indx].msg[0] & 0xF0)==0x90) {
+						// for note on, send both the note on and the note off NOW, in advance, so that it turns off with the same tone it started with if the chord changes later
+						sendWithNewNote(r[indx],noteToPlay);
+						for (var j = indx + 1; j < r.length; j++) {
+							try {
+								if (r[j].type=="midi" && (r[j].msg[0]  & 0xF0)==0x80 && (r[j].msg[0] & 0x0F)==(r[indx].msg[0] & 0x0F) && (r[j].msg[1])==(originalNote)) {  // note off, same channel and note
+									sendWithNewNote(r[j],noteToPlay);
+									break;  // only do the first note off
+								}
+							} catch (noteOffEx) { }
+						}
+					}
+					else {
+						mysynth.send(r[indx].msg,r[indx].t, doNotRecordPlayback);
+					}
+				}
 				indx++;
 			}
 			if (indx<r.length) bufferFillTimer = setTimeout(fillNoteBuffer,reloadBufferTimeout*1000);
 			else bufferFillTimer = null;
 		};
 		bufferFillTimer = setTimeout(fillNoteBuffer,0);
+		var setupAccTable = function() {
+			ntt = mysynth.getNoteTranspositionTable(accParms.sourceRootNote,accParms.sourceScaleType,accOnNotes,accParms.flagClosestOctave,accParms.flagForceToDestScale,accParms.destRootNote,accParms.destScaleType);
+		};
+		var getCurrentNotesOnInternal = function() {
+			// what notes are currently on, right now? (original notes, from the recording, not modified by accompaniment transposition)
+			var timeNow = mysynth.currentTime();
+			var notesOnDict = { };
+			for (var i = 0; i < r.length; i++) {
+				if (r[i].t < timeNow && r[i].type=="midi") {
+					try {
+						var msg = r[i].msg;
+						var midiCmd = (msg[0] & 0xF0);
+						var midiCh = (msg[0] & 0x0F);
+						var midiNote = (msg[1]);
+						var noteKey = midiCh + "_" + midiNote;
+						if (midiCmd == 0x90) {	// handle note-ons
+							notesOnDict[noteKey] = msg;		// we save the messages in the dictionary
+						} else if (midiCmd == 0x80) {	// handle note-offs
+							delete notesOnDict[noteKey];
+						}
+					} catch (ex1) { }
+				}
+			}
+			// now we have a dict of notes - convert it to a more useful array.
+			var notesOnArray = [];
+			for (var thisKey in notesOnDict) {
+				notesOnArray.push(notesOnDict[thisKey]);
+			}
+			return notesOnArray;
+		};
+		var getLastPlayedIndexInternal =  function() {
+			var timeNow = mysynth.currentTime();
+			var lastPlayedIndex = 0;
+			for (var i = 0; i < r.length; i++) {
+				if (r[i].t < timeNow) lastPlayedIndex = i;
+			}
+			return lastPlayedIndex;
+		};
+		var changeAcc = function() {
+			if (accOnQueuedNotes && accOnQueuedNotes.length>=3) {
+				// set up the new table for mapping accompaniment
+				accOnNotes = JSON.parse(JSON.stringify(accOnQueuedNotes));
+				setupAccTable();
+				// to ensure fastness, we just have a very short hardware queue.
+			}
+		};
+		var accOn = function(n) { 
+			accOnQueuedNotes.push(n);
+		};
+		var accOff = function(n) {
+			try { var indx = accOnQueuedNotes.indexOf(n); if (indx>=0) { accOnQueuedNotes.splice(indx,1); };  } catch (ex) { }
+		};
 		return {
 			getTimeStarted: function() {
 				return timeStarted;
 			},
 			getLastPlayedIndex: function() {
-				var timeNow = mysynth.currentTime();
-				var lastPlayedIndex = 0;
-				for (var i = 0; i < r.length; i++) {
-					if (r[i].t < timeNow) lastPlayedIndex = i;
-				}
-				return lastPlayedIndex;
+				return getLastPlayedIndexInternal();
 			},
-			getCurrentNotesOn: function() {
-				// what notes are currently on, right now?
-				var timeNow = mysynth.currentTime();
-				var notesOnDict = { };
-				for (var i = 0; i < r.length; i++) {
-					if (r[i].t < timeNow && r[i].type=="midi") {
-						try {
-							var msg = r[i].msg;
-							var midiCmd = (msg[0] & 0xF0);
-							var midiCh = (msg[0] & 0x0F);
-							var midiNote = (msg[1]);
-							var noteKey = midiCh + "_" + midiNote;
-							if (midiCmd == 0x90) {	// handle note-ons
-								notesOnDict[noteKey] = msg;		// we save the messages in the dictionary
-							} else if (midiCmd == 0x80) {	// handle note-offs
-								delete notesOnDict[noteKey];
-							}
-						} catch (ex1) { }
-					}
-				}
-				// now we have a dict of notes - convert it to a more useful array.
-				var notesOnArray = [];
-				for (var thisKey in notesOnDict) {
-					notesOnArray.push(notesOnDict[thisKey]);
-				}
-				return notesOnArray;
-			},
+			getAccNotes: function() { return accOnQueuedNotes; },
+			setAccNotes: function(a) { accOnNotes = a; accOnQueuedNotes = JSON.parse(JSON.stringify(a)); changeAcc(); },
+			getAccState: function() { return { "queued": accOnQueuedNotes, "chord": accOnNotes }; },
+			setAccState: function(n) { accOnNotes = n.chord; accOnQueuedNotes = n.queued; setupAccTable(); },
+			noteAccOn: function(n) { accOn(n);  changeAcc(); },
+			noteAccOff: function(n) { accOff(n);	changeAcc(); },
+			noteAccOnGroup: function(a) { a.map(x => accOn(x)); changeAcc(); },
+			noteAccOffGroup: function(a) { a.map(x => accOff(x)); changeAcc(); },
+			setAccParms: function(p) { accParms = p; changeAcc(); },
+			getCurrentNotesOn: function() { return getCurrentNotesOnInternal(); },
 			stop: function() {
 				mysynth.allSoundOffAllDevicesAllChannels();
 				mysynth.cancelPrerecordedNotes();
@@ -2143,7 +2207,7 @@ function WebAudioTinySynth(opt){
 		var rt = [].append(r1).append(r2);
 		this.sortRecordingByTime();
 	},
-	playback: function(r, t, doNotRecordPlayback, parentPlayControl, onlyAfter) {
+	playback: function(r, t, doNotRecordPlayback, parentPlayControl, onlyAfter, startAccKeys) {
 		// play back the notes in r, with the first note starting at time t
 		// if t is not present, the first note starts right away
 		// if doNotRecordPlayback is true, the notes in the playback are not recorded to the current recording arrays, otherwise, they are
@@ -2164,6 +2228,7 @@ function WebAudioTinySynth(opt){
 		}
 		var nr = this.normalizeRecordingTimes(sourceR,baseTime);
 		var sendControl = this.sendRecordedNotes(nr,doNotRecordPlayback,startIndex);
+		if (startAccKeys) sendControl.setAccState(startAccKeys);
 		var endTime = this.maxTime(nr);
 		var absoluteEndTime = this.currentTime() + endTime - nr[startIndex].t;
 		var msTillEnd = (endTime - nr[startIndex].t)*1000.0;
@@ -2233,7 +2298,7 @@ function WebAudioTinySynth(opt){
 			}
 			else {
 				if (playControl.loop) {		// handle looping: if we loop, we play back at the exact moment when the user pressed stop.
-					mysynth.playback(r,mysynth.currentTime(),doNotRecordPlayback,playControl);
+					mysynth.playback(r,mysynth.currentTime(),doNotRecordPlayback,playControl,undefined,playControl.currentSendControl.getAccState());
 				} else {
 					playControl.finished = true;
 				}
@@ -2370,8 +2435,7 @@ function WebAudioTinySynth(opt){
 			var pitch = this.noteNumberArray[chordRootName];
 			var chord = ((this.getChordTypes()).filter(c => c.type==chordType))[0];
 			var keyChord = chord.notes.map(n => (n+pitch)%12);
-			
-			return keyChord.map(p=>this.noteNameArray[p]);
+			return keyChord.map(n => n + 12*octave).sort();
 		} catch (ex) { 
 			return [];
 		}
@@ -2423,16 +2487,28 @@ function WebAudioTinySynth(opt){
 			if (!scaleOffset) scaleOffset = 0;  // if no offset parameter provided, same as zero offset.  The offset lets you e.g. transpose from C major to C major with a starting note of F for translating an accompaniment to an F chord when your melody is still in C.  The offset is the number of SCALE positions, not half steps -- e.g. for C -> F in C Major it is 3.
 			scaleOffset = scaleOffset % 12;
 			if (scaleOffset < 0) scaleOffset = 7 - scaleOffset;
-			var scaleRootPitch = scaleRootNote % 7;
-			var startScale = this.getScale(scaleType).notes.map(p => (p + scaleRootPitch));
-			var scale = [];
-			for (var i = 0; i < startScale.length; i++) scale.push(startScale[i]);
-			for (var i = 0; i < startScale.length; i++) scale.push(startScale[i]);  // double the scale data so you can handle offsets
+			var destScalePositionArray = this.toScalePositionArray(scaleRootNote,scaleType);
 			var outArray = [];
-			for (var el of scalePositionArray) {
-				var newNote = 12*el[1]+scale[el[0]+scaleOffset]+el[2];
-				if (newNote<0 || newNote>=128) newNote = null;
-				outArray.push(newNote);
+			for (var i = 0; i < scalePositionArray.length; i++) {
+				var ss = scalePositionArray[i][0]; var soct = scalePositionArray[i][1]; var sp = scalePositionArray[i][2];
+				if (scaleOffset != 0) {
+					ss = ss + scaleOffset;
+					if (ss >= 7) { ss = ss % 7; soct += 1; }
+				}
+				for (var j = 0; j < destScalePositionArray.length; j++) {
+					var ds = destScalePositionArray[j][0];  var doct = destScalePositionArray[j][1]; var dp = destScalePositionArray[j][2];
+					if (ss==ds && soct==doct && sp==dp) {
+						outArray[i] = j; break;
+					}
+				}
+			}
+			var fillInValue = 0;
+			for (var i = 0; i < outArray.length; i++) {
+				if (outArray[i]===undefined) {
+					outArray[i] = fillInValue;
+				} else {
+					fillInValue = 127;
+				}
 			}
 			return this.removeScaleNaNs(outArray);
 		} catch (ex) { 
@@ -2499,8 +2575,8 @@ function WebAudioTinySynth(opt){
 			var scalePositionArray = this.toScalePositionArray(sourceRootNote,sourceScale);
 			var baseTranspositionTable = null; 
 			if (flagForceToDestScale && destScaleRoot !== undefined && destScaleType !== undefined) {
-				var destScaleRootPitch = getMiddlingNote(destScaleRoot);
-				var scalePosition = scalePositionArray[destScaleRootPitch];
+				var chordRootNoteNumber = chord.noteNumber;
+				var scalePosition = scalePositionArray[chordRootNoteNumber];
 				if (scalePosition[2] !== 0) {
 					baseTranspositionTable = this.fromScalePositionArray(scalePositionArray,chord.noteNumber,(chord.chordScale));  // if it's not part of the destination scale, do it as though flagForceToDestScale wasn't true
 				} else {

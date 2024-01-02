@@ -394,6 +394,9 @@ var transposeToPentatonic = false;
 var bluesTransposingTable = [];
 var pentatonicTransposingTable = [];
 var repeatKey = 0;
+var accKeyboard = false;
+var akaiAccKeyboardModLast = 0;
+var accSplitPoint = 59;
 
 var currentTrack = 1;	// index into the tracks array for keys being played right now
 
@@ -458,6 +461,8 @@ function stopAllTracks()
 	for (var i = 0; i < tracks.length; i++) stopTrack(i);
 }
 
+/*
+seems to be obsolete-- commenting out for now
 
 var accompOptions = ["None","Translate C Major","Fill From Lowest"];
 var ACCOMP_NONE = 0, ACCOMP_CMAJOR = 1, ACCOMP_LOWESTFILL = 2;
@@ -491,7 +496,7 @@ function getAccompKeyOptions(n)
 	}
 	return outstr;
 }
-
+*/
 function getTrackOptions(n)
 {
 	var outstr = ""; var i = 0;
@@ -686,6 +691,13 @@ function defaultProcess(n) {
 	// Minimum velocity to help with sticky touch sensitive keys    
 	if (n.command=='noteOn' && n.velocity < minVelocity) n.velocity = minVelocity;    
 	if (n.command=='noteOn' && n.velocity > maxVelocity) n.velocity = maxVelocity;    
+	// Standard accompaniment keyboard feature.
+	if (accKeyboard) {
+		if ((!n.device.includes("internal:chord")) && (n.command=='noteOn'||n.command=='noteOff') && n.note <= accSplitPoint && (n.note >= 48 || (!n.device.includes('AKAI')))) {
+			sendAccompChord(n.command=='noteOn'?1:0,[n.note],127);
+			return;
+		}
+	}
 	// Special scales.
 	if (n.command=='noteOn'||n.command=='noteOff') {
 		if (transposeToBlues && bluesTransposingTable && bluesTransposingTable.length == 128) {
@@ -738,7 +750,13 @@ function defaultProcess(n) {
 					if (n.velocity > 127) n.velocity = 127;
 					if (n.velocity < 10) n.velocity = 0;
 					if (n.velocity < minModulation) n.velocity = minModulation;
+				} else if (modParm < -50) {
+					if (akaiAccKeyboardModLast >= -50) {		// going the other way toggles the accompaniment keyboard.
+						accKeyboard = !accKeyboard;
+						dg("toggleAccRange").value = accKeyboard ? "1" : "0";
+					}
 				}
+				akaiAccKeyboardModLast = modParm;
 			}
 			else if (n.note  >= 48 && n.note <= 51 && getCurrentInstrument()==16) {
 				// green knob bank controls blocks of drawbars if organ is the current instrument
@@ -858,6 +876,12 @@ function updatePlayRecordSliders()
 function mainMidiInputHandler(message) {
 	var midiEventElem = dg("divMidiEvents");
 	var fe = makeFriendlyMidiEvent(message);
+	try {
+		if (fe.command == "noteOn" && document.activeElement && document.activeElement.hasAttribute("data-notenumber")) {
+			document.activeElement.value = "" + fe.note;
+			return;
+		}
+	} catch (exFocusedElementEx) {  console.log("Error reading note number: " + exFocusedElementEx.message); }
 	if (fe.command == "noteOn" && onNextNoteDown) {
 		var funcToCall = onNextNoteDown;
 		onNextNoteDown = null;	// we clear out the onNextNoteDown function so it only calls once, but it can restart itself by filling itself in
@@ -977,6 +1001,32 @@ function setKbdKeys()
 	document.body.addEventListener("keyup", function(event) { keyEvent("up",event); });
 }
 
+var prefabChordKeys = [["C","M"],["F","M"],["G","M"],["A","m"],["D","m"],["E","m"],["C","7"],["C","M7"],["G","7"]];
+
+function sendAccompChord(downFlag,chordNotes, velocity) {
+	if (velocity === undefined) velocity = 127;
+	if (currentPlaybackControl) {
+		// version that changes accompaniment
+		try {
+			if (downFlag) {
+				currentPlaybackControl.currentSendControl.noteAccOnGroup(chordNotes);
+			} else {
+				currentPlaybackControl.currentSendControl.noteAccOffGroup(chordNotes);
+			}
+		} catch (ex) { }
+	} else {
+		// version that just plays the chords normally
+		var ch = parseInt(getKbdChannel(),10) & 0x0F;
+		for (var i = 0; i < chordNotes.length; i++) {
+			if (downFlag) {
+				synth.onmidimessage(makeMidiEventFromMessage([0x90 + ch,chordNotes[i] & 0x7F,velocity & 0x7F],"internal","chords","1"));
+			} else {
+				synth.onmidimessage(makeMidiEventFromMessage([0x80 + ch,chordNotes[i] & 0x7F,velocity & 0x7F],"internal","chords","1"));
+			}
+		}
+	}
+}
+
 function userInitiatedAudioStart()
 {
 	Init();  // init tiny synth
@@ -1032,10 +1082,28 @@ function userInitiatedAudioStart()
 			synth.onmidimessage(makeMidiEventFromMessage([0x80 + ch,noteNumber & 0x7F,0],"internal","drums","1"));
 		};
 	})
+	pianoKeyDisplay.createDrumPad(el("chordkeys"),9,127,20,0,prefabChordKeys.length-1,function(d) { return prefabChordKeys[d][0] + prefabChordKeys[d][1];  },function(x) {
+	    x.keyDown = false;
+		x.onNoteOn = function(noteNumber, channel, velocity, keyButton, startTime) {
+			if (x.keyDown) return;	// debounce
+			if (keyButton) keyButton.style.backgroundColor = "pink";
+			x.keyDown = true;
+			var ch = 9;
+			sendAccompChord(1,synth.getChordNotes(prefabChordKeys[noteNumber][0],prefabChordKeys[noteNumber][1],4));
+		};
+		x.onNoteOff = function(noteNumber, channel, keyButton, startTime) {
+			if (!x.keyDown) return; x.keyDown = false;
+			if (keyButton) keyButton.style.backgroundColor = "";
+			var ch = 9;
+			sendAccompChord(0,synth.getChordNotes(prefabChordKeys[noteNumber][0],prefabChordKeys[noteNumber][1],4));
+		};
+	})
 	dg("tsdrums").style.maxHeight = "110px";
 	dg("tsdrums2").style.maxHeight = "110px";
+	dg("chordkeys").style.maxHeight = "110px";
 	dg("tsdrums").style.height = "110px";
 	dg("tsdrums2").style.height = "110px";
+	dg("chordkeys").style.height = "110px";
 	dg("Panel:Main").style.display = "";
 	dg("Panel:Start").style.display = "none";
 	refreshTrackDisplay();
@@ -1210,7 +1278,6 @@ function loadTrackData(e)
 			// we ONLY send the change program command if the instrument on this line is what changed,
 			// since some midi devices don't really have 16 independent channels, so changing one can change all of them
 		}
-		tracks[i].accomp = parseInt(dg("trAccomp"+i).value,10);
 		tracks[i].replay = parseInt(dg("trReplay"+i).value,10);
 		tracks[i].offset = parseInt(dg("trOffset"+i).value,10);
 	}
@@ -1350,7 +1417,6 @@ function refreshTrackDisplay()
 		outstr += ("<td class=trcell><input onclick=\"loadTrackData(event)\" type=checkbox id=trMute" + i + " " + (tracks[i].mute ? " checked " : "") + "></td>");
 		outstr += ("<td class=trcell><input onclick=\"loadTrackData(event)\" type=radio id=trRecord" + i + " " + "name=trRecordTrack " + ((i==currentTrack) ? " checked " : "") + "></td>");
 		outstr += ("<td class=trcell><select onchange=\"loadTrackData(event)\" id=trInstrument" + i + ">" + getInstrumentOptions(tracks[i].instrument) + "</select></td>");
-		outstr += ("<td class=trcell><select onchange=\"loadTrackData(event)\" id=trAccomp" + i + ">" + getAccompOptions(tracks[i].accomp) + "</select></td>");
 		outstr += ("<td class=trcell><select onchange=\"loadTrackData(event)\" id=trReplay" + i + ">" + getTrackOptions(tracks[i].replay) + "</select></td>");
 		outstr += ("<td class=trcell><input style=\"width: 50px;\" type=\"number\" low=\"-12\" high=\"12\" step=\"1\" value=\"0\" onchange=\"loadTrackData(event)\" id=trOffset" + i + " />" + "</td>");
 		outstr += ("</tr>");
@@ -1854,12 +1920,12 @@ function dmMinorBeatTimer() {
 			<tr>
 				<td class="tabbottomborder">
 					<div style="text-align: left; background-color: white;" data-tab-panelcontainer="pg_panelcontainer" id="tabContainer">
-						<a href="#" data-tabname="KeyboardDrums" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Keyboard and Drums</a>
-						<a href="#" data-tabname="Main" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Main Settings</a>
+						<a href="#" data-tabname="KeyboardDrums" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Keyboard</a>
+						<a href="#" data-tabname="Main" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Settings</a>
 						<a href="#" data-tabname="Tracks" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Tracks</a>
 						<a href="#" data-tabname="DrumMachine" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drum Machine</a>
 						<a href="#" data-tabname="Drawbars" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Drawbars</a>
-						<a href="#" data-tabname="MIDIPlayback" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI File Playback</a>
+						<a href="#" data-tabname="MIDIPlayback" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI Files</a>
 						<a href="#" data-tabname="MIDISetup" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />MIDI Setup</a>
 						<a href="#" data-tabname="KeyAssignments" onclick="selectThisTab(event);" class="smalltab" data-tab-selected="0" />Key Assignments</a>
 					</div>
@@ -1879,6 +1945,7 @@ function dmMinorBeatTimer() {
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tskeyboard></div>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums></div>
                 	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=tsdrums2></div>
+                	<div style="width: calc(100vw - 10pt); border: thin solid black;" id=chordkeys></div>
 				</td>
 			</tr>
 			<tr data-tabname="Main" data-tab-panel-selected="0">
@@ -1897,6 +1964,9 @@ function dmMinorBeatTimer() {
 					<i>Special Scales on White Keys</i><br/>
 					<input id="toggleBlues" type="range" value="0" min="0" max="1" step="1" oninput="transposeToBlues = (this.value != 0); if (this.value) { transposeToPentatonic = false; dg('togglePentatonic').value = 0; }" style="width: 30px;"/> Blues<br/>
 					<input id="togglePentatonic" type="range" value="0" min="0" max="1" step="1" oninput="transposeToPentatonic = (this.value != 0); if (this.value) { transposeToBlues = false; dg('toggleBlues').value = 0; }" style="width: 30px;"/> Pentatonic<br/>
+					<br/>
+					<i>Accompaniment</i><br/>
+					<input id="toggleAccRange" type="range" value="0" min="0" max="1" step="1" oninput="accKeyboard = (this.value != 0);" style="width: 30px;"/>Keys at or below <input id="accSplitPointInputBox" value=59 data-notenumber="1" onchange="accSplitPoint = parseInt(dg('accSplitPointInputBox'),10);" type=number min=0 max=127 step=1> <i>(click in box and press piano key to set)</i> will be used to control accompaniment<br/>
 					<br/>
 					Quality : <select onchange="synth.setQuality(this.selectedIndex)"><option>Quality=0</option><option>Quality=1</option><option selected>Quality=2</option></select>
 					<br/>
@@ -1953,7 +2023,6 @@ function dmMinorBeatTimer() {
 								<td class=trhcell>Mute</td>
 								<td class=trhcell>Current</td>
 								<td class=trhcell>Instrument</td>
-								<td class=trhcell>Accomp</td>
 								<td class=trhcell>Play Same as Channel #</td>
 								<td class=trhcell>Offset</td>
 							</tr>
@@ -1965,6 +2034,7 @@ function dmMinorBeatTimer() {
 			</tr>
 			<tr data-tabname="Drawbars" data-tab-panel-selected="0">
 				<td>
+					<div><i>These settings adjust the sound for the Drawbar Organ instrument.</i></div>
 					<div id="drawbarbutton">
 						<button onclick="enableDrawbar()">Enable Custom Drawbar Organ Sound</button>
 					</div>
@@ -2019,6 +2089,7 @@ function dmMinorBeatTimer() {
 			</tr>
 			<tr data-tabname="KeyAssignments" data-tab-panel-selected="0">
 				<td>
+					<!--
 					<h4>Regular Key Assignments</h4>
 					<table style="border-collapse: collapse;" id=tableRegularKeyAssignments>
 						<thead>
@@ -2034,6 +2105,7 @@ function dmMinorBeatTimer() {
 							</tr>
 						</tbody>
 					</table>
+					-->
 					<h4>Custom Key Assignment Javascript</h4>
 					<textarea id="txtAreaNoteCode" style="width: calc(100vw - 25pt); height: calc(100vh - 130pt);" onchange="updateNoteFunction(event);">
 					</textarea>
