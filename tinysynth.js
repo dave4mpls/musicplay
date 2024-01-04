@@ -2700,6 +2700,11 @@ function WebAudioTinySynth(opt){
     },
     handleMIDIInput: function(message) {
       // this is the function that gets the midi input message first.
+      try {
+	if (message && message.data && message.data.length > 0 && (message.data[0] & 0xF0 == 0xF0)) {
+		return;  // ignore system messages
+	}
+      } catch (mEx) { }
       if (this.onmidimessage) this.onmidimessage(message);  // we just pass it along if a handler is set
       if (this.passThruMIDI) this.send(message.data);   // also, automatic passthrough unless you turn it off
     },
