@@ -873,6 +873,17 @@ function updatePlayRecordSliders()
 	} catch (ex2) { }
 }
 
+function formatMidiData(msg)
+{
+	try {
+		var outstr = "";
+		for (var i = 0; i < msg.data.length; i++) {
+			outstr += msg.data[i].toString(16) + " ";
+		}
+		return outstr;
+	} catch (ex) { return "---"; }
+}
+
 function mainMidiInputHandler(message) {
 	var midiEventElem = dg("divMidiEvents");
 	var fe = makeFriendlyMidiEvent(message);
@@ -889,7 +900,10 @@ function mainMidiInputHandler(message) {
 		onNextNoteDown = null;	// we clear out the onNextNoteDown function so it only calls once, but it can restart itself by filling itself in
 		funcToCall(message,fe);
 	}
-	midiEventElem.innerHTML = (fe.command) + "<br>" + "Ch " + (1+fe.channel) + "<br>Note " + fe.note + " " + getNoteNumberName(fe.note) + " / Vel " + fe.velocity + "<br>Dev: " + fe.device;
+	try {
+		midiEventElem.innerHTML = (fe.command) + "<br>" + "Ch " + (1+fe.channel) + "<br>Note " + fe.note + " " + getNoteNumberName(fe.note) + " / Vel " + fe.velocity + "<br>Dev: " + fe.device + "<br>" + htmlencode(formatMidiData(message));
+		if (dg('logEvents').checked) dg('divMidiLog').innerHTML = dg('divMidiLog').innerHTML + "; " + htmlencode(formatMidiData(message));
+	} catch (logEx) { }
 	// routine that lets us modify the results of pressing piano keys
 	var timeDiff = 0;
 	if (debugmsg) { console.log(makeFriendlyMidiEvent(message)); }
@@ -2096,8 +2110,12 @@ function setSplitPoint()
 						</td>
 					</tr></table>
 					<a href="#" onclick="javascript: refreshMidiDevices();">Refresh Midi Devices</a><br/><br/>
-					<div id="divMidiEvents" style="float: left; border: thin solid black; overflow: hidden; font-weight: normal; font-size: 10pt; ">
+					<div id="divMidiEvents" style="border: thin solid black; font-weight: normal; font-size: 10pt; ">
 						MIDI Events Appear Here
+					</div>
+					<br/>
+					<input type=checkbox id=logEvents> Log Events Below
+					<div id="divMidiLog" style="border: thin solid black; font-weight: normal; font-size: 10pt; ">
 					</div>
 				</td>
 			</tr>
