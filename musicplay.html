@@ -692,7 +692,7 @@ function defaultProcess(n) {
 	if (n.command=='noteOn' && n.velocity < minVelocity) n.velocity = minVelocity;    
 	if (n.command=='noteOn' && n.velocity > maxVelocity) n.velocity = maxVelocity;    
 	// Standard accompaniment keyboard feature.
-	if (accKeyboard) {
+	if (accKeyboard && n.channel != 9) {
 		if ((!n.device.includes("internal:chord")) && (n.command=='noteOn'||n.command=='noteOff') && n.note <= accSplitPoint && (n.note >= 48 || (!n.device.includes('AKAI')))) {
 			sendAccompChord(n.command=='noteOn'?1:0,[n.note],127);
 			return;
@@ -879,6 +879,8 @@ function mainMidiInputHandler(message) {
 	try {
 		if (fe.command == "noteOn" && document.activeElement && document.activeElement.hasAttribute("data-notenumber")) {
 			document.activeElement.value = "" + fe.note;
+			var e = new Event('change');
+			document.activeElement.dispatchEvent (e);
 			return;
 		}
 	} catch (exFocusedElementEx) {  console.log("Error reading note number: " + exFocusedElementEx.message); }
@@ -947,6 +949,9 @@ function setKbdKeys()
 		"KeyU": 71, "KeyI": 72, "Digit9": 73, "KeyO": 74, "Digit0": 75, "KeyP": 76,
 		"BracketLeft": 77, "Equal": 78, "BracketRight": 79
 	};
+	var chordKeys = {
+		"F5": 0, "F6": 1, "F7": 2, "F8": 3, "F9": 4, "F10": 5, "F11": 6, "F12": 7
+	};
 	var drumKeys = {};
 	var drumKeySourceString = "ASDFGHJKLZXCVBNM";
 	var drumIndex = 0;
@@ -994,6 +999,10 @@ function setKbdKeys()
 				var velocity = 127;
 				e.preventDefault();
 				synth.onmidimessage(makeMidiEventFromMessage([(ud=="down"? 0x90 : 0x80) + ch,noteNumber & 0x7F,velocity & 0x7F],"internal","keyboard","1"));
+			}
+			else if (chordKeys[e.code]!=undefined) {
+				e.preventDefault();
+				sendAccompChord(ud=="down",synth.getChordNotes(prefabChordKeys[chordKeys[e.code]][0],prefabChordKeys[chordKeys[e.code]][1],4));
 			}
 		}
 	};
@@ -1898,6 +1907,11 @@ function dmMinorBeatTimer() {
     setTimeout(dmMinorBeatTimer, nextBeatIn*(beatsToSchedule/2));	// we schedule to come back in half the time that we had scheduled, to try scheduling out some more, keeping in mind the lack of accuracy for setTimeout which is the reason we want overlap
 }
 
+function setSplitPoint()
+{
+	accSplitPoint = parseInt(dg('accSplitPointInputBox').value,10);
+}
+
 </SCRIPT>
 </HEAD>
 <BODY ONLOAD="onLoadFunction()">
@@ -1966,7 +1980,7 @@ function dmMinorBeatTimer() {
 					<input id="togglePentatonic" type="range" value="0" min="0" max="1" step="1" oninput="transposeToPentatonic = (this.value != 0); if (this.value) { transposeToBlues = false; dg('toggleBlues').value = 0; }" style="width: 30px;"/> Pentatonic<br/>
 					<br/>
 					<i>Accompaniment</i><br/>
-					<input id="toggleAccRange" type="range" value="0" min="0" max="1" step="1" oninput="accKeyboard = (this.value != 0);" style="width: 30px;"/>Keys at or below <input id="accSplitPointInputBox" value=59 data-notenumber="1" onchange="accSplitPoint = parseInt(dg('accSplitPointInputBox'),10);" type=number min=0 max=127 step=1> <i>(click in box and press piano key to set)</i> will be used to control accompaniment<br/>
+					<input id="toggleAccRange" type="range" value="0" min="0" max="1" step="1" oninput="accKeyboard = (this.value != 0);" style="width: 30px;"/>Keys at or below <input id="accSplitPointInputBox" value=59 data-notenumber="1" onchange="javascript: setSplitPoint()" type=number min=0 max=127 step=1> <i>(click in box and press piano key to set)</i> will be used to control accompaniment<br/>
 					<br/>
 					Quality : <select onchange="synth.setQuality(this.selectedIndex)"><option>Quality=0</option><option>Quality=1</option><option selected>Quality=2</option></select>
 					<br/>

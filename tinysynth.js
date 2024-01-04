@@ -2083,35 +2083,40 @@ function WebAudioTinySynth(opt){
 		var bufferLength = 0.05;	// # of seconds of notes to buffer into the hardware timer - these are VERY SMALL and that is how we make the chord changes happen fast!
 		var reloadBufferTimeout = 0.0125;	// # of seconds till you load more
 		var bufferFillTimer = null;
+		var playedChannels = this.channelsInRecording(r);
 		var ntt = null;   // note transposition table for accompaniment
 		var accOnNotes = [];			// actual notes saved to caller and used to generate chords
 		var accOnQueuedNotes = [];		// queued accomp notes that only get moved to accOnNotes when they're done
 		var timeStarted = mysynth.currentTime();
 		var accParms = { "sourceRootNote": 60, "sourceScaleType": "M", "destRootNote": 60, "destScaleType": "M", "flagClosestOctave": false, "flagForceToDestScale": true };  // accompaniment parameters, can be overridden with setAccParms
-		var sendWithNewNote = function(relem,newNote) {
+		var sendWithNewNote = function(relem,newNote,timeDelay) {
+			if (timeDelay===undefined) timeDelay = 0;
 			var newMsg = relem.msg.map(x => x);	// clone
 			newMsg[1] = newNote;
-			mysynth.send(newMsg,relem.t,doNotRecordPlayback);
+			mysynth.send(newMsg,relem.t+timeDelay,doNotRecordPlayback);
 		};
 		var fillNoteBuffer = function() {
 			var ct = mysynth.currentTime();
+			var accTimeDelay = 0;  // not using time delay feature for now
 			while (indx < r.length && (r[indx].t < ct+bufferLength)) {	
 				if (r[indx].type=="midi") {
 					var originalNote = 0;
+					var timeDelay = 0;
 					if (r[indx].msg && r[indx].msg.length>1) { originalNote = r[indx].msg[1]; }
 					var noteToPlay = originalNote;
 					if (ntt && r[indx].msg && r[indx].msg.length>1 && ((r[indx].msg[0] & 0x0F) !== 9) && ((r[indx].msg[0] & 0xF0) == 0x90 || ((r[indx].msg[0] & 0xF0) == 0x80))) {
 						// accompaniment is on: map notes (only for note-on and note-off messages and not for drums)
-						try { noteToPlay = ntt[originalNote]; } catch (accEx) { }
+						// the time delay is meant to start the non-drum accompaniment notes a little later so the player can change chords in time for them to sound right
+						try { noteToPlay = ntt[originalNote]; timeDelay = accTimeDelay; } catch (accEx) { }
 					}
 					if ((r[indx].msg[0] & 0xF0)==0x80) { }  // don't do note off in the normal stream
 					else if ((r[indx].msg[0] & 0xF0)==0x90) {
 						// for note on, send both the note on and the note off NOW, in advance, so that it turns off with the same tone it started with if the chord changes later
-						sendWithNewNote(r[indx],noteToPlay);
+						sendWithNewNote(r[indx],noteToPlay,timeDelay);
 						for (var j = indx + 1; j < r.length; j++) {
 							try {
 								if (r[j].type=="midi" && (r[j].msg[0]  & 0xF0)==0x80 && (r[j].msg[0] & 0x0F)==(r[indx].msg[0] & 0x0F) && (r[j].msg[1])==(originalNote)) {  // note off, same channel and note
-									sendWithNewNote(r[j],noteToPlay);
+									sendWithNewNote(r[j],noteToPlay,timeDelay);
 									break;  // only do the first note off
 								}
 							} catch (noteOffEx) { }
@@ -2166,11 +2171,33 @@ function WebAudioTinySynth(opt){
 			return lastPlayedIndex;
 		};
 		var changeAcc = function() {
+			var preNoteMargin = 0.125;
 			if (accOnQueuedNotes && accOnQueuedNotes.length>=3) {
 				// set up the new table for mapping accompaniment
 				accOnNotes = JSON.parse(JSON.stringify(accOnQueuedNotes));
 				setupAccTable();
-				// to ensure fastness, we just have a very short hardware queue.
+				// now we have a very fast queue, but we also need to re-trigger any currently open notes.
+				// don't do the pruning if we're very close to the next note
+				var nextNoteTime = null;
+				if (index < r.length) nextNoteTime = r[index].t;
+				if (nextNoteTime-mysynth.currentTime()>preNoteMargin) {
+					// now prune and replay the notes
+					var earliestPrunedTime = null;
+					for (var i = 0; i < mysynth.notetab.length; i++) {
+						if (mysynth.notetab[i].ch==9) continue;  // ignore drums
+						if (playedChannels.indexOf(mysynth.notetab[i].ch)>=0) {
+							if (earliestPrunedTime===null || (mysynth.notetab[i].t && mysynth.notetab[i].t<earliestPrunedTime)) earliestPrunedTime = mysynth.notetab[i].t;
+							mysynth._pruneNote(mysynth.notetab[i]);
+						}
+					}
+				}
+				// here, we locate the earliest note we removed and set it to start playing again, and the fill queue routine will locate the new correct note number.
+				if (earliestPrunedTime!==null) {
+					indx = 0;
+					for (var i = 0; i < r.length; i++) {
+						if (r[i] && r[i].t && r[i].t < earliestPrunedTime) indx = i;
+					}
+				}
 			}
 		};
 		var accOn = function(n) { 
