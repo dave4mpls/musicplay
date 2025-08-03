@@ -20,6 +20,83 @@
 <LINK REL="stylesheet" TYPE="text/css" HREF="pianokeys.css">
 <LINK REL="stylesheet" TYPE="text/css" HREF="drawbars.css">
 <STYLE TYPE="text/css">
+.drawbar {
+    height: 120px !important;
+    min-height: 120px !important;
+    max-height: 120px !important;
+}
+body {
+    min-height: 100vh;
+    margin: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: linear-gradient(135deg, #b08d57 0%, #7c5c36 100%);
+    color: #2d1c0b;
+}
+
+.bigButton {
+    background: linear-gradient(90deg, #b08d57 0%, #a67c52 100%);
+    color: #2d1c0b;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 1rem;
+    font-weight: bold;
+    box-shadow: 0 2px 8px rgba(176,141,87,0.12);
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    margin: 4px;
+}
+.bigButton:hover, button:hover {
+    background: linear-gradient(90deg, #a67c52 0%, #b08d57 100%);
+    transform: translateY(-2px) scale(1.03);
+}
+
+input[type="range"] {
+    accent-color: #a67c52;
+    height: 4px;
+    border-radius: 4px;
+}
+
+input, select, textarea {
+    border-radius: 6px;
+    border: 1px solid #e3c590;
+    padding: 6px;
+    font-size: 1rem;
+    margin: 2px 0;
+}
+
+table {
+    background: rgba(255,245,235,0.92);
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(176,141,87,0.10);
+    margin-bottom: 12px;
+}
+
+.tab, .smalltab, .lefttab {
+    background: rgba(255,245,235,0.92);
+    border: none;
+    border-bottom: 2px solid #a67c52;
+    color: #2d1c0b;
+    transition: background 0.2s, color 0.2s;
+}
+*[data-tab-selected="1"] {
+    background: #a67c52 !important;
+    color: #fff !important;
+}
+
+.tabbottomborder {
+    border-bottom: 2px solid #a67c52;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    background: #e3c590;
+}
+::-webkit-scrollbar-thumb {
+    background: #a67c52;
+    border-radius: 4px;
+}
+
 .ledUnlit {
 	color: #808080;
 }
@@ -1527,7 +1604,7 @@ function mainUndoButton()
 
 function clearUndoStack() {
 	undoStack = [];
-	setUndoLeds(0,0);
+	setUndoPastLedBasedOnStack();
 	notesAddedFlag = false;
 }
 
@@ -1921,9 +1998,92 @@ function dmMinorBeatTimer() {
     setTimeout(dmMinorBeatTimer, nextBeatIn*(beatsToSchedule/2));	// we schedule to come back in half the time that we had scheduled, to try scheduling out some more, keeping in mind the lack of accuracy for setTimeout which is the reason we want overlap
 }
 
-function setSplitPoint()
-{
-	accSplitPoint = parseInt(dg('accSplitPointInputBox').value,10);
+function saveRecordingAsMidi() {
+    if (!currentRecording || currentRecording.length === 0) {
+        alert("No recording to save!");
+        return;
+    }
+
+    // Minimal MIDI file writer
+    function writeVarLen(value) {
+        var buffer = value & 0x7F;
+        var bytes = [];
+        while ((value >>= 7)) {
+            buffer <<= 8;
+            buffer |= ((value & 0x7F) | 0x80);
+        }
+        while (true) {
+            bytes.push(buffer & 0xFF);
+            if (buffer & 0x80) buffer >>= 8;
+            else break;
+        }
+        return bytes;
+    }
+
+    function midiHeaderChunk() {
+        // MThd chunk: format 0, 1 track, 480 ticks/quarter
+        return [
+            0x4d,0x54,0x68,0x64, // 'MThd'
+            0x00,0x00,0x00,0x06, // header length
+            0x00,0x00,           // format 0
+            0x00,0x01,           // 1 track
+            0x01,0xe0            // 480 ticks/quarter note
+        ];
+    }
+
+    function midiTrackChunk(events) {
+        var data = [];
+        var lastTime = 0;
+        for (var i = 0; i < events.length; i++) {
+            var ev = events[i];
+            var delta = Math.round((ev.t - lastTime) * 960); // assuming t is in seconds, 120bpm
+            lastTime = ev.t;
+            data = data.concat(writeVarLen(delta));
+            data = data.concat(ev.msg);
+        }
+        // End of track
+        data = data.concat([0x00, 0xFF, 0x2F, 0x00]);
+        var len = data.length;
+        return [
+            0x4d,0x54,0x72,0x6b, // 'MTrk'
+            (len>>24)&0xFF, (len>>16)&0xFF, (len>>8)&0xFF, len&0xFF
+        ].concat(data);
+    }
+
+    // Filter only MIDI events with .msg and .t
+    var midiEvents = currentRecording.filter(function(ev) {
+        return ev && ev.msg && Array.isArray(ev.msg) && typeof ev.t === "number";
+    });
+
+    if (midiEvents.length === 0) {
+        alert("No MIDI events to save!");
+        return;
+    }
+
+    // Normalize times to start at zero
+    var t0 = midiEvents[0].t;
+    midiEvents = midiEvents.map(function(ev) {
+        return { msg: ev.msg, t: ev.t - t0 };
+    });
+
+    var bytes = [].concat(
+        midiHeaderChunk(),
+        midiTrackChunk(midiEvents)
+    );
+
+    var uint8 = new Uint8Array(bytes);
+    var blob = new Blob([uint8], {type: "audio/midi"});
+    var url = URL.createObjectURL(blob);
+
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "recording.mid";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 100);
 }
 
 </SCRIPT>
@@ -2096,6 +2256,7 @@ function setSplitPoint()
 					Loop : <input type="checkbox" onchange="synth.setLoop(this.checked)"/><br/>
 					<button onclick="playMidi()">Play</button>
 					<button onclick="stopMidi()">Stop</button>
+					<button onclick="saveRecordingAsMidi()">Save Recording as MIDI</button>
 					<div id="status"></div>
 				</td>
 			</tr>
